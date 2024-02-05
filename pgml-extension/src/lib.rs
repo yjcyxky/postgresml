@@ -15,6 +15,7 @@ pub mod config;
 pub mod metrics;
 pub mod orm;
 pub mod vectors;
+pub mod kge;
 
 #[cfg(not(feature = "use_as_lib"))]
 pg_module_magic!();
