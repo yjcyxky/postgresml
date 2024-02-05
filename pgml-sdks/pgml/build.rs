@@ -8,20 +8,26 @@ async def migrate() -> None
 
 Json = Any
 DateTime = int
+GeneralJsonIterator = Any
+GeneralJsonAsyncIterator = Any
 "#;
 
 const ADDITIONAL_DEFAULTS_FOR_JAVASCRIPT: &[u8] = br#"
 export function init_logger(level?: string, format?: string): void;
 export function migrate(): Promise<void>;
 
-export type Json = { [key: string]: any };
+export type Json = any;
 export type DateTime = Date;
+export type GeneralJsonIterator = any;
+export type GeneralJsonAsyncIterator = any;
 
 export function newCollection(name: string, database_url?: string): Collection;
 export function newModel(name?: string, source?: string, parameters?: Json): Model;
 export function newSplitter(name?: string, parameters?: Json): Splitter;
 export function newBuiltins(database_url?: string): Builtins;
 export function newPipeline(name: string, model?: Model, splitter?: Splitter, parameters?: Json): Pipeline;
+export function newTransformerPipeline(task: string, model?: string, args?: Json, database_url?: string): TransformerPipeline;
+export function newOpenSourceAI(database_url?: string): OpenSourceAI;
 "#;
 
 fn main() {

@@ -15,7 +15,7 @@ anyhow = "1"
 aho-corasick = "0.7"
 base64 = "0.21"
 comrak = "0.17"
-chrono = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
 csv-async = "1"
 console-subscriber = "*"
 convert_case = "0.6"
@@ -29,7 +29,7 @@ log = "0.4"
 markdown = "1.0.0-alpha.14"
 num-traits = "0.2"
 once_cell = "1.18"
-pgml = { version = "0.9.4", path = "../pgml-sdks/pgml/" }
+pgml = { path = "../pgml-sdks/pgml/" }
 pgml-components = { path = "../packages/pgml-components" }
 pgvector = { version = "0.2.2", features = [ "sqlx", "postgres" ] }
 rand = "0.8"
@@ -50,3 +50,5 @@ tokio = { version = "1", features = ["full"] }
 url = "2.4"
 yaml-rust = "0.4"
 zoomies = { git="https://github.com/HyperparamAI/zoomies.git", branch="master" }
+ws = { package = "rocket_ws", git = "https://github.com/SergioBenitez/Rocket" }
+futures = "0.3.29"

@@ -41,13 +41,16 @@ pre {
     }
 }
 
+pre[data-controller="copy"] {
+    padding-top: 2rem;
+}
+
 // links
 a {
     text-decoration: none; 
 
     &:not(.btn, .nav .nav-link, .breadcrumb-item a, .list-group-item, .a-reset, .navbar .nav-link, .navbar .navbar-brand, .menu-item a) {
         color: var(--bs-link-color);
-        background-color: transparent;
     }
 }
 
@@ -72,15 +75,6 @@ article {
 
 .bg-white {
     background-color: #{$bg-white} !important;
-}
-
-// Our flagship gradient.
-.party-time {
-    background: $gradient-text;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    text-fill-color: transparent;
 }
 
 // Remove padding from large screens.
@@ -116,14 +110,6 @@ article {
     background: #{$purple};
 }
 
-.syntax-highlight {
-    background: $gradient-blue;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    text-fill-color: transparent;
-}
-
 .noselect {
     -webkit-touch-callout: none; /* iOS Safari */
       -webkit-user-select: none; /* Safari */
@@ -132,4 +118,11 @@ article {
           -ms-user-select: none; /* Internet Explorer/Edge */
               user-select: none; /* Non-prefixed version, currently
                                     supported by Chrome, Edge, Opera and Firefox */
+}
+
+// Smooth scroll does not work in firefox and turbo.  New pages will not scroll to top, so we remove smooth for Firefox. 
+@-moz-document url-prefix() {
+    :root {
+        scroll-behavior: auto;
+    }
 }

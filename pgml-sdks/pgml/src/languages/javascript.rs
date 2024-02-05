@@ -1,9 +1,12 @@
+use futures::StreamExt;
 use neon::prelude::*;
 use rust_bridge::javascript::{FromJsType, IntoJsResult};
+use std::cell::RefCell;
+use std::sync::Arc;
 
 use crate::{
     pipeline::PipelineSyncData,
-    types::{DateTime, Json},
+    types::{DateTime, GeneralJsonAsyncIterator, GeneralJsonIterator, Json},
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -16,8 +19,9 @@ impl IntoJsResult for DateTime {
         self,
         cx: &mut C,
     ) -> JsResult<'b, Self::Output> {
-        let date = neon::types::JsDate::new(cx, self.0.assume_utc().unix_timestamp() as f64 * 1000.0)
-            .expect("Error converting to JS Date");
+        let date =
+            neon::types::JsDate::new(cx, self.0.assume_utc().unix_timestamp() as f64 * 1000.0)
+                .expect("Error converting to JS Date");
         Ok(date)
     }
 }
@@ -66,6 +70,110 @@ impl IntoJsResult for PipelineSyncData {
         cx: &mut C,
     ) -> JsResult<'b, Self::Output> {
         Json::from(self).into_js_result(cx)
+    }
+}
+
+#[derive(Clone)]
+struct GeneralJsonAsyncIteratorJavaScript(Arc<tokio::sync::Mutex<GeneralJsonAsyncIterator>>);
+
+impl Finalize for GeneralJsonAsyncIteratorJavaScript {}
+
+fn transform_stream_iterate_next(mut cx: FunctionContext) -> JsResult<JsPromise> {
+    let this = cx.this();
+    let s: Handle<JsBox<GeneralJsonAsyncIteratorJavaScript>> = this
+        .get(&mut cx, "s")
+        .expect("Error getting self in transformer_stream_iterate_next");
+    let ts: &GeneralJsonAsyncIteratorJavaScript = &s;
+    let ts: GeneralJsonAsyncIteratorJavaScript = ts.clone();
+
+    let channel = cx.channel();
+    let (deferred, promise) = cx.promise();
+    crate::get_or_set_runtime().spawn(async move {
+        let mut ts = ts.0.lock().await;
+        let v = ts.next().await;
+        deferred
+            .try_settle_with(&channel, move |mut cx| {
+                let o = cx.empty_object();
+                if let Some(v) = v {
+                    let v: Json = v.expect("Error calling next on GeneralJsonAsyncIterator");
+                    let v = v
+                        .into_js_result(&mut cx)
+                        .expect("Error converting rust Json to JavaScript Object");
+                    let d = cx.boolean(false);
+                    o.set(&mut cx, "value", v)
+                        .expect("Error setting object value in transform_stream_iterate_next");
+                    o.set(&mut cx, "done", d)
+                        .expect("Error setting object value in transform_stream_iterate_next");
+                } else {
+                    let d = cx.boolean(true);
+                    o.set(&mut cx, "done", d)
+                        .expect("Error setting object value in transform_stream_iterate_next");
+                }
+                Ok(o)
+            })
+            .expect("Error sending js");
+    });
+    Ok(promise)
+}
+
+impl IntoJsResult for GeneralJsonAsyncIterator {
+    type Output = JsValue;
+    fn into_js_result<'a, 'b, 'c: 'b, C: Context<'c>>(
+        self,
+        cx: &mut C,
+    ) -> JsResult<'b, Self::Output> {
+        let o = cx.empty_object();
+        let f: Handle<JsFunction> = JsFunction::new(cx, transform_stream_iterate_next)?;
+        o.set(cx, "next", f)?;
+        let s = cx.boxed(GeneralJsonAsyncIteratorJavaScript(Arc::new(
+            tokio::sync::Mutex::new(self),
+        )));
+        o.set(cx, "s", s)?;
+        Ok(o.as_value(cx))
+    }
+}
+
+struct GeneralJsonIteratorJavaScript(RefCell<GeneralJsonIterator>);
+
+impl Finalize for GeneralJsonIteratorJavaScript {}
+
+fn transform_iterate_next(mut cx: FunctionContext) -> JsResult<JsObject> {
+    let this = cx.this();
+    let s: Handle<JsBox<GeneralJsonIteratorJavaScript>> = this
+        .get(&mut cx, "s")
+        .expect("Error getting self in transform_iterate_next");
+    let v = s.0.borrow_mut().next();
+    let o = cx.empty_object();
+    if let Some(v) = v {
+        let v: Json = v.expect("Error calling next on GeneralJsonAsyncIterator");
+        let v = v
+            .into_js_result(&mut cx)
+            .expect("Error converting rust Json to JavaScript Object");
+        let d = cx.boolean(false);
+        o.set(&mut cx, "value", v)
+            .expect("Error setting object value in transform_iterate_next");
+        o.set(&mut cx, "done", d)
+            .expect("Error setting object value in transform_iterate_next");
+    } else {
+        let d = cx.boolean(true);
+        o.set(&mut cx, "done", d)
+            .expect("Error setting object value in transform_iterate_next");
+    }
+    Ok(o)
+}
+
+impl IntoJsResult for GeneralJsonIterator {
+    type Output = JsValue;
+    fn into_js_result<'a, 'b, 'c: 'b, C: Context<'c>>(
+        self,
+        cx: &mut C,
+    ) -> JsResult<'b, Self::Output> {
+        let o = cx.empty_object();
+        let f: Handle<JsFunction> = JsFunction::new(cx, transform_iterate_next)?;
+        o.set(cx, "next", f)?;
+        let s = cx.boxed(GeneralJsonIteratorJavaScript(RefCell::new(self)));
+        o.set(cx, "s", s)?;
+        Ok(o.as_value(cx))
     }
 }
 

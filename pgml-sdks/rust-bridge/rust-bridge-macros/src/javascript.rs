@@ -235,10 +235,7 @@ pub fn generate_javascript_methods(
 
         let middle = if method.is_async {
             quote! {
-                // let runtime = crate::get_or_set_runtime();
-                // let x = runtime.block_on(#wrapped_call);
                 let x = #wrapped_call.await;
-
             }
         } else {
             quote! {
@@ -430,7 +427,7 @@ fn convert_method_wrapper_arguments(
             )
         }
         _ => {
-            let argument_type_js = get_neon_type(&ty);
+            let argument_type_js = get_neon_type(ty);
             let t = ty.to_type(None).expect(
                 "Could not parse type in convert_method_wrapper_arguments in javascript.rs",
             );

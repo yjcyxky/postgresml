@@ -12,19 +12,17 @@ pub struct Star {
     svg: &'static str,
 }
 
-const SVGS: Lazy<HashMap<&'static str, &'static str>> = Lazy::new(|| {
+static SVGS: Lazy<HashMap<&'static str, &'static str>> = Lazy::new(|| {
     let mut map = HashMap::new();
-    map.insert(
-        "green",
-        include_str!("../../../static/images/icons/stars/green.svg"),
-    );
-    map.insert(
-        "party",
-        include_str!("../../../static/images/icons/stars/party.svg"),
-    );
+    map.insert("green", include_str!("../../../static/images/icons/stars/green.svg"));
+    map.insert("party", include_str!("../../../static/images/icons/stars/party.svg"));
     map.insert(
         "give_it_a_spin",
         include_str!("../../../static/images/icons/stars/give_it_a_spin.svg"),
+    );
+    map.insert(
+        "give_it_a_spin_outline",
+        include_str!("../../../static/images/icons/stars/give_it_a_spin_outline.svg"),
     );
     map
 });

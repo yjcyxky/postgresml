@@ -1,65 +1,134 @@
+use futures::StreamExt;
 use pyo3::conversion::IntoPy;
 use pyo3::types::{PyDict, PyFloat, PyInt, PyList, PyString};
 use pyo3::{prelude::*, types::PyBool};
+use std::sync::Arc;
 
 use rust_bridge::python::CustomInto;
 
-use crate::{pipeline::PipelineSyncData, types::Json};
+use crate::{
+    pipeline::PipelineSyncData,
+    types::{GeneralJsonAsyncIterator, GeneralJsonIterator, Json},
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 // Rust to PY //////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-impl ToPyObject for Json {
-    fn to_object(&self, py: Python) -> PyObject {
+impl IntoPy<PyObject> for Json {
+    fn into_py(self, py: Python) -> PyObject {
         match &self.0 {
-            serde_json::Value::Bool(x) => x.to_object(py),
+            serde_json::Value::Bool(x) => x.into_py(py),
             serde_json::Value::Number(x) => {
                 if x.is_f64() {
                     x.as_f64()
                         .expect("Error converting to f64 in impl ToPyObject for Json")
-                        .to_object(py)
+                        .into_py(py)
                 } else {
                     x.as_i64()
                         .expect("Error converting to i64 in impl ToPyObject for Json")
-                        .to_object(py)
+                        .into_py(py)
                 }
             }
-            serde_json::Value::String(x) => x.to_object(py),
+            serde_json::Value::String(x) => x.into_py(py),
             serde_json::Value::Array(x) => {
                 let list = PyList::empty(py);
                 for v in x.iter() {
-                    list.append(Json(v.clone()).to_object(py)).unwrap();
+                    list.append(Json(v.clone()).into_py(py)).unwrap();
                 }
-                list.to_object(py)
+                list.into_py(py)
             }
             serde_json::Value::Object(x) => {
                 let dict = PyDict::new(py);
                 for (k, v) in x.iter() {
-                    dict.set_item(k, Json(v.clone()).to_object(py)).unwrap();
+                    dict.set_item(k, Json(v.clone()).into_py(py)).unwrap();
                 }
-                dict.to_object(py)
+                dict.into_py(py)
             }
             serde_json::Value::Null => py.None(),
         }
     }
 }
 
-impl IntoPy<PyObject> for Json {
-    fn into_py(self, py: Python) -> PyObject {
-        self.to_object(py)
-    }
-}
-
-impl ToPyObject for PipelineSyncData {
-    fn to_object(&self, py: Python) -> PyObject {
-        Json::from(self.clone()).to_object(py)
-    }
-}
-
 impl IntoPy<PyObject> for PipelineSyncData {
     fn into_py(self, py: Python) -> PyObject {
-        self.to_object(py)
+        Json::from(self).into_py(py)
+    }
+}
+
+#[pyclass]
+#[derive(Clone)]
+struct GeneralJsonAsyncIteratorPython {
+    wrapped: Arc<tokio::sync::Mutex<GeneralJsonAsyncIterator>>,
+}
+
+#[pymethods]
+impl GeneralJsonAsyncIteratorPython {
+    fn __aiter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __anext__<'p>(slf: PyRefMut<'_, Self>, py: Python<'p>) -> PyResult<Option<PyObject>> {
+        let ts = slf.wrapped.clone();
+        let fut = pyo3_asyncio::tokio::future_into_py(py, async move {
+            let mut ts = ts.lock().await;
+            if let Some(o) = ts.next().await {
+                Ok(Some(Python::with_gil(|py| {
+                    o.expect("Error calling next on GeneralJsonAsyncIterator")
+                        .into_py(py)
+                })))
+            } else {
+                Err(pyo3::exceptions::PyStopAsyncIteration::new_err(
+                    "stream exhausted",
+                ))
+            }
+        })?;
+        Ok(Some(fut.into()))
+    }
+}
+
+impl IntoPy<PyObject> for GeneralJsonAsyncIterator {
+    fn into_py(self, py: Python) -> PyObject {
+        let f: Py<GeneralJsonAsyncIteratorPython> = Py::new(
+            py,
+            GeneralJsonAsyncIteratorPython {
+                wrapped: Arc::new(tokio::sync::Mutex::new(self)),
+            },
+        )
+        .expect("Error converting GeneralJsonAsyncIterator to GeneralJsonAsyncIteratorPython");
+        f.to_object(py)
+    }
+}
+
+#[pyclass]
+struct GeneralJsonIteratorPython {
+    wrapped: GeneralJsonIterator,
+}
+
+#[pymethods]
+impl GeneralJsonIteratorPython {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__(mut slf: PyRefMut<'_, Self>, py: Python) -> PyResult<Option<PyObject>> {
+        if let Some(o) = slf.wrapped.next() {
+            let o = o.expect("Error calling next on GeneralJsonIterator");
+            Ok(Some(o.into_py(py)))
+        } else {
+            Err(pyo3::exceptions::PyStopIteration::new_err(
+                "stream exhausted",
+            ))
+        }
+    }
+}
+
+impl IntoPy<PyObject> for GeneralJsonIterator {
+    fn into_py(self, py: Python) -> PyObject {
+        let f: Py<GeneralJsonIteratorPython> =
+            Py::new(py, GeneralJsonIteratorPython { wrapped: self })
+                .expect("Error converting GeneralJsonIterator to GeneralJsonIteratorPython");
+        f.to_object(py)
     }
 }
 
@@ -112,6 +181,18 @@ impl FromPyObject<'_> for PipelineSyncData {
     fn extract(ob: &PyAny) -> PyResult<Self> {
         let json = Json::extract(ob)?;
         Ok(json.into())
+    }
+}
+
+impl FromPyObject<'_> for GeneralJsonAsyncIterator {
+    fn extract(_ob: &PyAny) -> PyResult<Self> {
+        panic!("We must implement this, but this is impossible to be reached")
+    }
+}
+
+impl FromPyObject<'_> for GeneralJsonIterator {
+    fn extract(_ob: &PyAny) -> PyResult<Self> {
+        panic!("We must implement this, but this is impossible to be reached")
     }
 }
 

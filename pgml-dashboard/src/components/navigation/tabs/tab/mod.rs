@@ -1,4 +1,4 @@
-#![allow(unused_variables)]
+#![allow(unused_variables)] // tab.active usage isn't seen inside sailfish templates
 use pgml_components::component;
 use pgml_components::Component;
 use sailfish::TemplateOnce;
@@ -37,7 +37,7 @@ impl Tab {
     }
 
     pub fn id(&self) -> String {
-        format!("tab-{}", self.name.to_lowercase().replace(" ", "-"))
+        format!("tab-{}", self.name.to_lowercase().replace(' ', "-"))
     }
 
     pub fn selected(&self) -> String {

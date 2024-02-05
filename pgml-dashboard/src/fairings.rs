@@ -9,11 +9,12 @@ use crate::utils::datadog::timing;
 /// Times requests and responses for reporting via datadog
 struct RequestMonitorStart(std::time::Instant);
 
-pub struct RequestMonitor {}
+#[derive(Default)]
+pub struct RequestMonitor;
 
 impl RequestMonitor {
     pub fn new() -> RequestMonitor {
-        RequestMonitor {}
+        Self
     }
 }
 
@@ -33,9 +34,7 @@ impl Fairing for RequestMonitor {
     }
 
     async fn on_response<'r>(&self, request: &'r Request<'_>, response: &mut Response<'r>) {
-        let start = request
-            .local_cache(|| RequestMonitorStart(std::time::Instant::now()))
-            .0;
+        let start = request.local_cache(|| RequestMonitorStart(std::time::Instant::now())).0;
         let elapsed = start.elapsed().as_micros() as f32 / 1000.0;
         let status = response.status().code;
         let method = request.method().as_str();
@@ -61,6 +60,6 @@ impl Fairing for RequestMonitor {
             ("path".to_string(), path.to_string()),
         ]);
         let metric = "http.request";
-        timing(&metric, elapsed, Some(&tags)).await;
+        timing(metric, elapsed, Some(&tags)).await;
     }
 }

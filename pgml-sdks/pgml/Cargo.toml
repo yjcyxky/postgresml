@@ -1,6 +1,6 @@
 [package]
 name = "pgml"
-version = "0.9.4"
+version = "0.10.1"
 edition = "2021"
 authors = ["PosgresML <team@postgresml.org>"]
 homepage = "https://postgresml.org/"
@@ -38,6 +38,12 @@ serde = "1.0.181"
 futures = "0.3.28"
 walkdir = "2.4.0"
 lopdf = { version = "0.31.0", features = ["nom_parser"] }
+clap = { version = "4", features = ["derive"]}
+is-terminal = "0.4"
+colored = "2"
+ctrlc = "3"
+inquire = "0.6"
+parking_lot = "0.12.1"
 
 [features]
 default = []

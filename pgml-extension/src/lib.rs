@@ -24,6 +24,7 @@ extension_sql_file!("../sql/schema.sql", name = "schema");
 #[cfg(not(feature = "use_as_lib"))]
 #[pg_guard]
 pub extern "C" fn _PG_init() {
+    bindings::python::activate().expect("Error setting python venv");
     orm::project::init();
 }
 
@@ -57,7 +58,9 @@ pub mod pg_test {
             let option = format!("pgml.venv = '{venv}'");
             options.push(Box::leak(option.into_boxed_str()));
         } else {
-            println!("If using virtualenv for Python depenencies, set the `PGML_VENV` environment variable for testing");
+            println!(
+                "If using virtualenv for Python depenencies, set the `PGML_VENV` environment variable for testing"
+            );
         }
         options
     }

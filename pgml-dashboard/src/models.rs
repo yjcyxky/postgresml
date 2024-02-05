@@ -25,7 +25,7 @@ impl Project {
             "SELECT
                     id,
                     name,
-                    task::TEXT,
+                    task::text,
                     created_at
                 FROM pgml.projects
                 WHERE id = $1",
@@ -44,6 +44,7 @@ impl Project {
                     task::TEXT,
                     created_at
                 FROM pgml.projects
+                WHERE task::text != 'embedding'
                 ORDER BY id DESC"
         )
         .fetch_all(pool)
@@ -186,12 +187,7 @@ pub struct Cell {
 }
 
 impl Cell {
-    pub async fn create(
-        pool: &PgPool,
-        notebook: &Notebook,
-        cell_type: i32,
-        contents: &str,
-    ) -> anyhow::Result<Cell> {
+    pub async fn create(pool: &PgPool, notebook: &Notebook, cell_type: i32, contents: &str) -> anyhow::Result<Cell> {
         Ok(sqlx::query_as!(
             Cell,
             "
@@ -248,12 +244,7 @@ impl Cell {
         .await?)
     }
 
-    pub async fn update(
-        &mut self,
-        pool: &PgPool,
-        cell_type: i32,
-        contents: &str,
-    ) -> anyhow::Result<()> {
+    pub async fn update(&mut self, pool: &PgPool, cell_type: i32, contents: &str) -> anyhow::Result<()> {
         self.cell_type = cell_type;
         self.contents = contents.to_string();
 
@@ -295,11 +286,7 @@ impl Cell {
         .await?)
     }
 
-    pub async fn reorder(
-        self,
-        pool: impl sqlx::PgExecutor<'_>,
-        cell_number: i32,
-    ) -> anyhow::Result<Cell> {
+    pub async fn reorder(self, pool: impl sqlx::PgExecutor<'_>, cell_number: i32) -> anyhow::Result<Cell> {
         Ok(sqlx::query_as!(
             Cell,
             "
@@ -347,11 +334,7 @@ impl Cell {
 
         let (rendering, execution_time) = match cell_type {
             CellType::Sql => {
-                let queries: Vec<&str> = self
-                    .contents
-                    .split(';')
-                    .filter(|q| !q.trim().is_empty())
-                    .collect();
+                let queries: Vec<&str> = self.contents.split(';').filter(|q| !q.trim().is_empty()).collect();
                 let mut rendering = String::new();
                 let mut total_execution_duration = std::time::Duration::default();
 
@@ -380,18 +363,20 @@ impl Cell {
             }
 
             CellType::Markdown => {
-                let mut options = ComrakOptions::default();
-                options.extension = ComrakExtensionOptions {
-                    strikethrough: true,
-                    tagfilter: true,
-                    table: true,
-                    autolink: true,
-                    tasklist: true,
-                    superscript: true,
-                    header_ids: None,
-                    footnotes: true,
-                    description_lists: true,
-                    front_matter_delimiter: None,
+                let options = ComrakOptions {
+                    extension: ComrakExtensionOptions {
+                        strikethrough: true,
+                        tagfilter: true,
+                        table: true,
+                        autolink: true,
+                        tasklist: true,
+                        superscript: true,
+                        header_ids: None,
+                        footnotes: true,
+                        description_lists: true,
+                        front_matter_delimiter: None,
+                    },
+                    ..Default::default()
                 };
 
                 (
@@ -540,19 +525,19 @@ impl Model {
         .await?)
     }
 
-    pub fn metrics<'a>(&'a self) -> &'a serde_json::Map<String, serde_json::Value> {
+    pub fn metrics(&self) -> &serde_json::Map<String, serde_json::Value> {
         self.metrics.as_ref().unwrap().as_object().unwrap()
     }
 
-    pub fn hyperparams<'a>(&'a self) -> &'a serde_json::Map<String, serde_json::Value> {
+    pub fn hyperparams(&self) -> &serde_json::Map<String, serde_json::Value> {
         self.hyperparams.as_object().unwrap()
     }
 
-    pub fn search_params<'a>(&'a self) -> &'a serde_json::Map<String, serde_json::Value> {
+    pub fn search_params(&self) -> &serde_json::Map<String, serde_json::Value> {
         self.search_params.as_object().unwrap()
     }
 
-    pub fn search_results<'a>(&'a self) -> Option<&'a serde_json::Map<String, serde_json::Value>> {
+    pub fn search_results(&self) -> Option<&serde_json::Map<String, serde_json::Value>> {
         match self.metrics().get("search_results") {
             Some(value) => Some(value.as_object().unwrap()),
             None => None,
@@ -675,19 +660,12 @@ impl Snapshot {
 
     pub fn rows(&self) -> Option<i64> {
         match self.analysis.as_ref() {
-            Some(analysis) => match analysis.get("samples") {
-                Some(samples) => Some(samples.as_f64().unwrap() as i64),
-                None => None,
-            },
+            Some(analysis) => analysis.get("samples").map(|samples| samples.as_f64().unwrap() as i64),
             None => None,
         }
     }
 
-    pub async fn samples(
-        &self,
-        pool: &PgPool,
-        rows: i64,
-    ) -> anyhow::Result<HashMap<String, Vec<f32>>> {
+    pub async fn samples(&self, pool: &PgPool, rows: i64) -> anyhow::Result<HashMap<String, Vec<f32>>> {
         let mut samples = HashMap::new();
 
         if self.exists {
@@ -715,23 +693,14 @@ impl Snapshot {
     }
 
     pub fn feature_size(&self) -> Option<usize> {
-        match self.features() {
-            Some(features) => Some(features.len()),
-            None => None,
-        }
+        self.features().map(|features| features.len())
     }
 
-    pub fn columns<'a>(&'a self) -> Option<Vec<&'a serde_json::Map<String, serde_json::Value>>> {
+    pub fn columns(&self) -> Option<Vec<&serde_json::Map<String, serde_json::Value>>> {
         match self.columns.as_ref() {
-            Some(columns) => match columns.as_array() {
-                Some(columns) => Some(
-                    columns
-                        .iter()
-                        .map(|column| column.as_object().unwrap())
-                        .collect(),
-                ),
-                None => None,
-            },
+            Some(columns) => columns
+                .as_array()
+                .map(|columns| columns.iter().map(|column| column.as_object().unwrap()).collect()),
 
             None => None,
         }
@@ -797,9 +766,7 @@ impl Snapshot {
             // 2.2+
             None => {
                 let columns = self.columns().unwrap();
-                let column = columns
-                    .iter()
-                    .find(|column| &column["name"].as_str().unwrap() == &name);
+                let column = columns.iter().find(|column| column["name"].as_str().unwrap() == name);
                 match column {
                     Some(column) => column
                         .get("statistics")
@@ -829,10 +796,7 @@ pub struct Deployment {
 }
 
 impl Deployment {
-    pub async fn get_by_project_id(
-        pool: &PgPool,
-        project_id: i64,
-    ) -> anyhow::Result<Vec<Deployment>> {
+    pub async fn get_by_project_id(pool: &PgPool, project_id: i64) -> anyhow::Result<Vec<Deployment>> {
         Ok(sqlx::query_as!(
             Deployment,
             "SELECT
@@ -883,7 +847,7 @@ impl Deployment {
     }
 
     pub fn human_readable_strategy(&self) -> String {
-        self.strategy.as_ref().unwrap().replace("_", " ")
+        self.strategy.as_ref().unwrap().replace('_', " ")
     }
 }
 
@@ -908,12 +872,7 @@ impl UploadedFile {
         .await?)
     }
 
-    pub async fn upload(
-        &mut self,
-        pool: &PgPool,
-        file: &std::path::Path,
-        headers: bool,
-    ) -> anyhow::Result<()> {
+    pub async fn upload(&mut self, pool: &PgPool, file: &std::path::Path, headers: bool) -> anyhow::Result<()> {
         // Open the temp file.
         let mut reader = tokio::io::BufReader::new(tokio::fs::File::open(file).await?);
 

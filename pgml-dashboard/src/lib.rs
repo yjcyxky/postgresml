@@ -1,7 +1,10 @@
+#![allow(renamed_and_removed_lints)]
+
 #[macro_use]
 extern crate rocket;
 
 use rocket::form::Form;
+use rocket::http::CookieJar;
 use rocket::response::Redirect;
 use rocket::route::Route;
 use rocket::serde::json::Json;
@@ -20,6 +23,7 @@ pub mod templates;
 pub mod types;
 pub mod utils;
 
+use components::notifications::marketing::{AlertBanner, FeatureBanner};
 use guards::{Cluster, ConnectedCluster};
 use responses::{BadRequest, Error, ResponseOk};
 use templates::{
@@ -27,6 +31,10 @@ use templates::{
     *,
 };
 use utils::tabs;
+
+use crate::utils::cookies::Notifications;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 #[derive(Debug, Default, Clone)]
 pub struct ClustersSettings {
@@ -47,6 +55,124 @@ pub struct Context {
     pub account_management_nav: StaticNav,
     pub upper_left_nav: StaticNav,
     pub lower_left_nav: StaticNav,
+    pub marketing_footer: String,
+    pub head_items: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Notification {
+    pub message: String,
+    pub level: NotificationLevel,
+    pub id: String,
+    pub dismissible: bool,
+    pub viewed: bool,
+    pub link: Option<String>,
+}
+impl Notification {
+    pub fn new(message: &str) -> Notification {
+        let mut s = DefaultHasher::new();
+        message.hash(&mut s);
+
+        Notification {
+            message: message.to_string(),
+            level: NotificationLevel::Level1,
+            id: s.finish().to_string(),
+            dismissible: true,
+            viewed: false,
+            link: None,
+        }
+    }
+
+    pub fn level(mut self, level: &NotificationLevel) -> Notification {
+        self.level = level.clone();
+        self
+    }
+
+    pub fn dismissible(mut self, dismissible: bool) -> Notification {
+        self.dismissible = dismissible;
+        self
+    }
+
+    pub fn link(mut self, link: &str) -> Notification {
+        self.link = Some(link.into());
+        self
+    }
+
+    pub fn viewed(mut self, viewed: bool) -> Notification {
+        self.viewed = viewed;
+        self
+    }
+
+    pub fn is_alert(level: &NotificationLevel) -> bool {
+        match level {
+            NotificationLevel::Level1 => true,
+            NotificationLevel::Level2 => true,
+            NotificationLevel::Level3 => true,
+            _ => false,
+        }
+    }
+
+    pub fn next_alert(context: Option<&crate::guards::Cluster>) -> Option<&Notification> {
+        match context.as_ref() {
+            Some(context) => match &context.notifications {
+                Some(notifications) => {
+                    match notifications
+                        .into_iter()
+                        .filter(|n| Notification::is_alert(&n.level))
+                        .next()
+                    {
+                        Some(notification) => return Some(notification),
+                        None => return None,
+                    }
+                }
+                None => return None,
+            },
+            None => return None,
+        };
+    }
+
+    pub fn next_feature(context: Option<&crate::guards::Cluster>) -> Option<&Notification> {
+        match context.as_ref() {
+            Some(context) => match &context.notifications {
+                Some(notifications) => {
+                    match notifications
+                        .into_iter()
+                        .filter(|n| !Notification::is_alert(&n.level))
+                        .next()
+                    {
+                        Some(notification) => return Some(notification),
+                        None => return None,
+                    }
+                }
+                None => return None,
+            },
+            None => return None,
+        };
+    }
+}
+
+impl std::fmt::Display for NotificationLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NotificationLevel::Level1 => write!(f, "level1"),
+            NotificationLevel::Level2 => write!(f, "level2"),
+            NotificationLevel::Level3 => write!(f, "level3"),
+            NotificationLevel::Feature1 => write!(f, "feature1"),
+            NotificationLevel::Feature2 => write!(f, "feature2"),
+            NotificationLevel::Feature3 => write!(f, "feature3"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub enum NotificationLevel {
+    #[default]
+    Level1,
+    Level2,
+    Level3,
+    Feature1,
+    Feature2,
+    Feature3,
 }
 
 #[get("/projects")]
@@ -66,20 +192,15 @@ pub async fn project_get(cluster: ConnectedCluster<'_>, id: i64) -> Result<Respo
     let models = models::Model::get_by_project_id(cluster.pool(), id).await?;
 
     Ok(ResponseOk(
-        templates::Project { project, models }
-            .render_once()
-            .unwrap(),
+        templates::Project { project, models }.render_once().unwrap(),
     ))
 }
 
 #[get("/notebooks?<new>")]
-pub async fn notebook_index(
-    cluster: ConnectedCluster<'_>,
-    new: Option<&str>,
-) -> Result<ResponseOk, Error> {
+pub async fn notebook_index(cluster: ConnectedCluster<'_>, new: Option<&str>) -> Result<ResponseOk, Error> {
     Ok(ResponseOk(
         templates::Notebooks {
-            notebooks: models::Notebook::all(&cluster.pool()).await?,
+            notebooks: models::Notebook::all(cluster.pool()).await?,
             new: new.is_some(),
         }
         .render_once()
@@ -88,47 +209,30 @@ pub async fn notebook_index(
 }
 
 #[post("/notebooks", data = "<data>")]
-pub async fn notebook_create(
-    cluster: &Cluster,
-    data: Form<forms::Notebook<'_>>,
-) -> Result<Redirect, Error> {
+pub async fn notebook_create(cluster: &Cluster, data: Form<forms::Notebook<'_>>) -> Result<Redirect, Error> {
     let notebook = crate::models::Notebook::create(cluster.pool(), data.name).await?;
 
     models::Cell::create(cluster.pool(), &notebook, models::CellType::Sql as i32, "").await?;
 
-    Ok(Redirect::to(format!(
-        "/dashboard?tab=Notebook&id={}",
-        notebook.id
-    )))
+    Ok(Redirect::to(format!("/dashboard?tab=Notebook&id={}", notebook.id)))
 }
 
 #[get("/notebooks/<notebook_id>")]
-pub async fn notebook_get(
-    cluster: ConnectedCluster<'_>,
-    notebook_id: i64,
-) -> Result<ResponseOk, Error> {
+pub async fn notebook_get(cluster: ConnectedCluster<'_>, notebook_id: i64) -> Result<ResponseOk, Error> {
     let notebook = models::Notebook::get_by_id(cluster.pool(), notebook_id).await?;
     let cells = notebook.cells(cluster.pool()).await?;
 
     Ok(ResponseOk(
-        templates::Notebook { cells, notebook }
-            .render_once()
-            .unwrap(),
+        templates::Notebook { cells, notebook }.render_once().unwrap(),
     ))
 }
 
 #[post("/notebooks/<notebook_id>/reset")]
-pub async fn notebook_reset(
-    cluster: ConnectedCluster<'_>,
-    notebook_id: i64,
-) -> Result<Redirect, Error> {
+pub async fn notebook_reset(cluster: ConnectedCluster<'_>, notebook_id: i64) -> Result<Redirect, Error> {
     let notebook = models::Notebook::get_by_id(cluster.pool(), notebook_id).await?;
     notebook.reset(cluster.pool()).await?;
 
-    Ok(Redirect::to(format!(
-        "/dashboard/notebooks/{}",
-        notebook_id
-    )))
+    Ok(Redirect::to(format!("/dashboard/notebooks/{}", notebook_id)))
 }
 
 #[post("/notebooks/<notebook_id>/cell", data = "<cell>")]
@@ -138,22 +242,14 @@ pub async fn cell_create(
     cell: Form<forms::Cell<'_>>,
 ) -> Result<Redirect, Error> {
     let notebook = models::Notebook::get_by_id(cluster.pool(), notebook_id).await?;
-    let mut cell = models::Cell::create(
-        cluster.pool(),
-        &notebook,
-        cell.cell_type.parse::<i32>()?,
-        cell.contents,
-    )
-    .await?;
+    let mut cell =
+        models::Cell::create(cluster.pool(), &notebook, cell.cell_type.parse::<i32>()?, cell.contents).await?;
 
     if !cell.contents.is_empty() {
-        let _ = cell.render(cluster.pool()).await?;
+        cell.render(cluster.pool()).await?;
     }
 
-    Ok(Redirect::to(format!(
-        "/dashboard/notebooks/{}",
-        notebook_id
-    )))
+    Ok(Redirect::to(format!("/dashboard/notebooks/{}", notebook_id)))
 }
 
 #[post("/notebooks/<notebook_id>/reorder", data = "<cells>")]
@@ -175,18 +271,11 @@ pub async fn notebook_reorder(
 
     transaction.commit().await?;
 
-    Ok(Redirect::to(format!(
-        "/dashboard/notebooks/{}",
-        notebook_id
-    )))
+    Ok(Redirect::to(format!("/dashboard/notebooks/{}", notebook_id)))
 }
 
 #[get("/notebooks/<notebook_id>/cell/<cell_id>")]
-pub async fn cell_get(
-    cluster: ConnectedCluster<'_>,
-    notebook_id: i64,
-    cell_id: i64,
-) -> Result<ResponseOk, Error> {
+pub async fn cell_get(cluster: ConnectedCluster<'_>, notebook_id: i64, cell_id: i64) -> Result<ResponseOk, Error> {
     let notebook = models::Notebook::get_by_id(cluster.pool(), notebook_id).await?;
     let cell = models::Cell::get_by_id(cluster.pool(), cell_id).await?;
 
@@ -203,11 +292,7 @@ pub async fn cell_get(
 }
 
 #[post("/notebooks/<notebook_id>/cell/<cell_id>/cancel")]
-pub async fn cell_cancel(
-    cluster: ConnectedCluster<'_>,
-    notebook_id: i64,
-    cell_id: i64,
-) -> Result<Redirect, Error> {
+pub async fn cell_cancel(cluster: ConnectedCluster<'_>, notebook_id: i64, cell_id: i64) -> Result<Redirect, Error> {
     let cell = models::Cell::get_by_id(cluster.pool(), cell_id).await?;
     cell.cancel(cluster.pool()).await?;
     Ok(Redirect::to(format!(
@@ -226,12 +311,8 @@ pub async fn cell_edit(
     let notebook = models::Notebook::get_by_id(cluster.pool(), notebook_id).await?;
     let mut cell = models::Cell::get_by_id(cluster.pool(), cell_id).await?;
 
-    cell.update(
-        cluster.pool(),
-        data.cell_type.parse::<i32>()?,
-        &data.contents,
-    )
-    .await?;
+    cell.update(cluster.pool(), data.cell_type.parse::<i32>()?, data.contents)
+        .await?;
 
     debug!("Rendering cell id={}", cell.id);
     cell.render(cluster.pool()).await?;
@@ -271,11 +352,7 @@ pub async fn cell_trigger_edit(
 }
 
 #[post("/notebooks/<notebook_id>/cell/<cell_id>/play")]
-pub async fn cell_play(
-    cluster: ConnectedCluster<'_>,
-    notebook_id: i64,
-    cell_id: i64,
-) -> Result<ResponseOk, Error> {
+pub async fn cell_play(cluster: ConnectedCluster<'_>, notebook_id: i64, cell_id: i64) -> Result<ResponseOk, Error> {
     let notebook = models::Notebook::get_by_id(cluster.pool(), notebook_id).await?;
     let mut cell = models::Cell::get_by_id(cluster.pool(), cell_id).await?;
     cell.render(cluster.pool()).await?;
@@ -293,11 +370,7 @@ pub async fn cell_play(
 }
 
 #[post("/notebooks/<notebook_id>/cell/<cell_id>/remove")]
-pub async fn cell_remove(
-    cluster: ConnectedCluster<'_>,
-    notebook_id: i64,
-    cell_id: i64,
-) -> Result<ResponseOk, Error> {
+pub async fn cell_remove(cluster: ConnectedCluster<'_>, notebook_id: i64, cell_id: i64) -> Result<ResponseOk, Error> {
     let notebook = models::Notebook::get_by_id(cluster.pool(), notebook_id).await?;
     let cell = models::Cell::get_by_id(cluster.pool(), cell_id).await?;
     let bust_cache = std::time::SystemTime::now()
@@ -316,11 +389,7 @@ pub async fn cell_remove(
 }
 
 #[post("/notebooks/<notebook_id>/cell/<cell_id>/delete")]
-pub async fn cell_delete(
-    cluster: ConnectedCluster<'_>,
-    notebook_id: i64,
-    cell_id: i64,
-) -> Result<Redirect, Error> {
+pub async fn cell_delete(cluster: ConnectedCluster<'_>, notebook_id: i64, cell_id: i64) -> Result<Redirect, Error> {
     let _notebook = models::Notebook::get_by_id(cluster.pool(), notebook_id).await?;
     let cell = models::Cell::get_by_id(cluster.pool(), cell_id).await?;
 
@@ -392,9 +461,7 @@ pub async fn models_get(cluster: ConnectedCluster<'_>, id: i64) -> Result<Respon
 pub async fn snapshots_index(cluster: ConnectedCluster<'_>) -> Result<ResponseOk, Error> {
     let snapshots = models::Snapshot::all(cluster.pool()).await?;
 
-    Ok(ResponseOk(
-        templates::Snapshots { snapshots }.render_once().unwrap(),
-    ))
+    Ok(ResponseOk(templates::Snapshots { snapshots }.render_once().unwrap()))
 }
 
 #[get("/snapshots/<id>")]
@@ -434,12 +501,7 @@ pub async fn deployments_index(cluster: ConnectedCluster<'_>) -> Result<Response
     }
 
     Ok(ResponseOk(
-        templates::Deployments {
-            projects,
-            deployments,
-        }
-        .render_once()
-        .unwrap(),
+        templates::Deployments { projects, deployments }.render_once().unwrap(),
     ))
 }
 
@@ -492,12 +554,9 @@ pub async fn uploader_upload(
 
 #[get("/uploader/done?<table_name>")]
 pub async fn uploaded_index(cluster: ConnectedCluster<'_>, table_name: &str) -> ResponseOk {
-    let sql = templates::Sql::new(
-        cluster.pool(),
-        &format!("SELECT * FROM {} LIMIT 10", table_name),
-    )
-    .await
-    .unwrap();
+    let sql = templates::Sql::new(cluster.pool(), &format!("SELECT * FROM {} LIMIT 10", table_name))
+        .await
+        .unwrap();
     ResponseOk(
         templates::Uploaded {
             table_name: table_name.to_string(),
@@ -510,11 +569,7 @@ pub async fn uploaded_index(cluster: ConnectedCluster<'_>, table_name: &str) -> 
 }
 
 #[get("/?<tab>&<id>")]
-pub async fn dashboard(
-    cluster: ConnectedCluster<'_>,
-    tab: Option<&str>,
-    id: Option<i64>,
-) -> Result<ResponseOk, Error> {
+pub async fn dashboard(cluster: ConnectedCluster<'_>, tab: Option<&str>, id: Option<i64>) -> Result<ResponseOk, Error> {
     let mut layout = crate::templates::WebAppBase::new("Dashboard", &cluster.inner.context);
 
     let mut breadcrumbs = vec![NavLink::new("Dashboard", "/dashboard")];
@@ -546,13 +601,8 @@ pub async fn dashboard(
         "Project" => {
             let project = models::Project::get_by_id(cluster.pool(), id.unwrap()).await?;
             breadcrumbs.push(NavLink::new("Projects", "/dashboard?tab=Projects"));
-            breadcrumbs.push(
-                NavLink::new(
-                    &project.name,
-                    &format!("/dashboard?tab=Project&id={}", project.id),
-                )
-                .active(),
-            );
+            breadcrumbs
+                .push(NavLink::new(&project.name, &format!("/dashboard?tab=Project&id={}", project.id)).active());
         }
 
         "Models" => {
@@ -568,13 +618,7 @@ pub async fn dashboard(
                 &project.name,
                 &format!("/dashboard?tab=Project&id={}", project.id),
             ));
-            breadcrumbs.push(
-                NavLink::new(
-                    &model.algorithm,
-                    &format!("/dashboard?tab=Model&id={}", model.id),
-                )
-                .active(),
-            );
+            breadcrumbs.push(NavLink::new(&model.algorithm, &format!("/dashboard?tab=Model&id={}", model.id)).active());
         }
 
         "Snapshots" => {
@@ -630,11 +674,7 @@ pub async fn dashboard(
 
         "Model" => vec![tabs::Tab {
             name: "Model",
-            content: ModelTab {
-                model_id: id.unwrap(),
-            }
-            .render_once()
-            .unwrap(),
+            content: ModelTab { model_id: id.unwrap() }.render_once().unwrap(),
         }],
 
         "Snapshots" => vec![tabs::Tab {
@@ -660,15 +700,46 @@ pub async fn dashboard(
 
     let nav_tabs = tabs::Tabs::new(tabs, Some("Notebooks"), Some(tab))?;
 
-    Ok(ResponseOk(
-        layout.render(templates::Dashboard { tabs: nav_tabs }),
-    ))
+    Ok(ResponseOk(layout.render(templates::Dashboard { tabs: nav_tabs })))
 }
 
 #[get("/playground")]
 pub async fn playground(cluster: &Cluster) -> Result<ResponseOk, Error> {
     let mut layout = crate::templates::WebAppBase::new("Playground", &cluster.context);
     Ok(ResponseOk(layout.render(templates::Playground {})))
+}
+
+#[get("/notifications/remove_banner?<id>&<alert>")]
+pub fn remove_banner(id: String, alert: bool, cookies: &CookieJar<'_>, context: &Cluster) -> ResponseOk {
+    let mut viewed = Notifications::get_viewed(cookies);
+
+    viewed.push(id);
+    Notifications::update_viewed(&viewed, cookies);
+
+    let notification = match context.notifications.as_ref() {
+        Some(notifications) => {
+            if alert {
+                notifications
+                    .into_iter()
+                    .filter(|n: &&Notification| -> bool { Notification::is_alert(&n.level) && !viewed.contains(&n.id) })
+                    .next()
+            } else {
+                notifications
+                    .into_iter()
+                    .filter(|n: &&Notification| -> bool {
+                        !Notification::is_alert(&n.level) && !viewed.contains(&n.id)
+                    })
+                    .next()
+            }
+        }
+        _ => None,
+    };
+
+    if alert {
+        return ResponseOk(AlertBanner::from_notification(notification).render_once().unwrap());
+    } else {
+        return ResponseOk(FeatureBanner::from_notification(notification).render_once().unwrap());
+    }
 }
 
 pub fn routes() -> Vec<Route> {
@@ -698,6 +769,7 @@ pub fn routes() -> Vec<Route> {
         uploaded_index,
         dashboard,
         notebook_reorder,
+        remove_banner,
     ]
 }
 

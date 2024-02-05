@@ -1,5 +1,4 @@
 .docs {
-
     div.results {
         overflow-x: auto;
         margin: 24px 24px;
@@ -142,4 +141,85 @@
     li:not(.nav-item) {
         margin: 0.8rem 0;
     }
+
+    // Gitbook blog author block
+    h1 {
+        + div:first-of-type[align="left"] {
+            float: left;
+            height: 54px;
+            width: 54px;
+            display: inline-block;
+            margin-right: 1rem;
+
+            figure {
+                margin: 0 !important;
+
+                img {
+                    margin: 0 !important;
+                    border-radius: 50%;
+                }
+            }
+
+            + p {
+                margin: 0;
+            }
+
+            + p + p {
+                margin-bottom: 2rem;
+            }
+        }
+    }
+
+    figure {
+        display: flex;
+        flex-direction: column;
+        img, figcaption {
+            margin-left: auto;
+            margin-right: auto;
+        }
+    }
+
+    // Codemirror overrideds
+    .cm-editor {
+        background: inherit;
+
+        // default no line numbers. 
+        .cm-gutters {
+            display: none;
+        }
+    }
+
+    .cm-gutters {
+        background: inherit;
+    }
+    
+    .code-highlight {
+        background: blue;
+    }
+
+    .cm-activeLine {
+        background-color: transparent;
+    }
+
+    .line-numbers {
+        .cm-gutters {
+            display: contents !important;
+        }
+    }
+
+    h1, h2, h3, h4, h5, h6 {
+        scroll-margin-top: 108px;
+
+        a {
+            color: inherit !important;
+            &:hover {
+                &:after {
+                    content: '#';
+                    margin-left: 0.2em;
+                    position: absolute;
+                }
+            }
+        }
+    }
 }
+

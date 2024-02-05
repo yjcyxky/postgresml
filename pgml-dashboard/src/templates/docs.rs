@@ -1,59 +1,8 @@
-//! Documentation and blog templates.
+use convert_case;
 use sailfish::TemplateOnce;
+use serde::{Deserialize, Serialize};
 
 use crate::utils::markdown::SearchResult;
-
-/// Documentation and blog link used in the left nav.
-#[derive(TemplateOnce, Debug, Clone)]
-#[template(path = "components/link.html")]
-pub struct NavLink {
-    pub id: String,
-    pub title: String,
-    pub href: String,
-    pub children: Vec<NavLink>,
-    pub open: bool,
-    pub active: bool,
-}
-
-impl NavLink {
-    /// Create a new documentation link.
-    pub fn new(title: &str) -> NavLink {
-        NavLink {
-            id: crate::utils::random_string(25),
-            title: title.to_owned(),
-            href: "#".to_owned(),
-            children: vec![],
-            open: false,
-            active: false,
-        }
-    }
-
-    /// Set the link href.
-    pub fn href(mut self, href: &str) -> NavLink {
-        self.href = href.to_owned();
-        self
-    }
-
-    /// Set the link's children which are shown when the link is expanded
-    /// using Bootstrap's collapse.
-    pub fn children(mut self, children: Vec<NavLink>) -> NavLink {
-        self.children = children;
-        self
-    }
-
-    /// Automatically expand the link and it's parents
-    /// when one of the children is visible.
-    pub fn should_open(&mut self, path: &str) -> bool {
-        self.active = self.href.ends_with(&path);
-        self.open = self.active;
-        for child in self.children.iter_mut() {
-            if child.should_open(path) {
-                self.open = true;
-            }
-        }
-        self.open
-    }
-}
 
 /// The search results template.
 #[derive(TemplateOnce)]
@@ -64,7 +13,7 @@ pub struct Search {
 }
 
 /// Table of contents link.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TocLink {
     pub title: String,
     pub id: String,
@@ -77,9 +26,21 @@ impl TocLink {
     /// # Arguments
     ///
     /// * `title` - The title of the link.
+    /// * `counter` - The number of times that header is in the document
     ///
     pub fn new(title: &str, counter: usize) -> TocLink {
-        let id = format!("header-{}", counter);
+        let conv = convert_case::Converter::new().to_case(convert_case::Case::Kebab);
+        let id = conv.convert(title.to_string());
+
+        // gitbook style id's
+        let id = format!(
+            "{id}{}",
+            if counter > 0 {
+                format!("-{counter}")
+            } else {
+                String::new()
+            }
+        );
 
         TocLink {
             title: title.to_string(),
@@ -95,11 +56,20 @@ impl TocLink {
         self.level = level;
         self
     }
-}
 
-/// Table of contents template.
-#[derive(TemplateOnce)]
-#[template(path = "components/toc.html")]
-pub struct Toc {
-    pub links: Vec<TocLink>,
+    /// Converts gitbook link fragment to toc header
+    pub fn from_fragment(link: String) -> TocLink {
+        match link.is_empty() {
+            true => TocLink {
+                title: String::new(),
+                id: String::new(),
+                level: 0,
+            },
+            _ => TocLink {
+                title: link.clone(),
+                id: format!("{}", link.clone()),
+                level: 0,
+            },
+        }
+    }
 }

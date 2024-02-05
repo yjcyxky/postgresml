@@ -75,6 +75,15 @@ enum Commands {
     /// Setup local dev.
     #[command(subcommand)]
     LocalDev(LocalDevCommands),
+
+    /// Watch for local changes
+    Watch,
+
+    /// Lint your code
+    Lint {
+        #[arg(long, default_value = "false")]
+        check: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -113,6 +122,12 @@ fn main() {
                     LocalDevCommands::Check {} => local_dev::setup(),
                     LocalDevCommands::InstallPgvector {} => local_dev::install_pgvector(),
                 },
+                Commands::Watch => {
+                    frontend::tools::watch();
+                }
+                Commands::Lint { check } => {
+                    frontend::tools::lint(check);
+                }
             }
         }
     }

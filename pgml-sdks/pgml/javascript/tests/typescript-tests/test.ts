@@ -281,6 +281,114 @@ it("can order documents", async () => {
 });
 
 ///////////////////////////////////////////////////
+// Transformer Pipeline Tests /////////////////////
+///////////////////////////////////////////////////
+
+it("can transformer pipeline", async () => {
+  const t = pgml.newTransformerPipeline("text-generation");
+  const it = await t.transform(["AI is going to"], {max_new_tokens: 5});
+  expect(it.length).toBeGreaterThan(0)
+});
+
+it("can transformer pipeline stream", async () => {
+  const t = pgml.newTransformerPipeline("text-generation");
+  const it = await t.transform_stream("AI is going to", {max_new_tokens: 5});
+  let result = await it.next();
+  let output = [];
+  while (!result.done) {
+    output.push(result.value);
+    result = await it.next();
+  }
+  expect(output.length).toBeGreaterThan(0);
+});
+
+///////////////////////////////////////////////////
+// Test OpenSourceAI //////////////////////////////
+///////////////////////////////////////////////////
+
+it("can open source ai create", () => {
+  const client = pgml.newOpenSourceAI();
+  const results = client.chat_completions_create(
+        "HuggingFaceH4/zephyr-7b-beta",
+        [
+            {
+                role: "system",
+                content: "You are a friendly chatbot who always responds in the style of a pirate",
+            },
+            {
+                role: "user",
+                content: "How many helicopters can a human eat in one sitting?",
+            },
+        ],
+  );
+  expect(results.choices.length).toBeGreaterThan(0);
+});
+
+
+it("can open source ai create async", async () => {
+  const client = pgml.newOpenSourceAI();
+  const results = await client.chat_completions_create_async(
+        "HuggingFaceH4/zephyr-7b-beta",
+        [
+            {
+                role: "system",
+                content: "You are a friendly chatbot who always responds in the style of a pirate",
+            },
+            {
+                role: "user",
+                content: "How many helicopters can a human eat in one sitting?",
+            },
+        ],
+  );
+  expect(results.choices.length).toBeGreaterThan(0);
+});
+
+
+it("can open source ai create stream", () => {
+  const client = pgml.newOpenSourceAI();
+  const it = client.chat_completions_create_stream(
+        "HuggingFaceH4/zephyr-7b-beta",
+        [
+            {
+                role: "system",
+                content: "You are a friendly chatbot who always responds in the style of a pirate",
+            },
+            {
+                role: "user",
+                content: "How many helicopters can a human eat in one sitting?",
+            },
+        ],
+  );
+  let result = it.next();
+  while (!result.done) {
+    expect(result.value.choices.length).toBeGreaterThan(0);
+    result = it.next();
+  }
+});
+
+it("can open source ai create stream async", async () => {
+  const client = pgml.newOpenSourceAI();
+  const it = await client.chat_completions_create_stream_async(
+        "HuggingFaceH4/zephyr-7b-beta",
+        [
+            {
+                role: "system",
+                content: "You are a friendly chatbot who always responds in the style of a pirate",
+            },
+            {
+                role: "user",
+                content: "How many helicopters can a human eat in one sitting?",
+            },
+        ],
+  );
+  let result = await it.next();
+  while (!result.done) {
+    expect(result.value.choices.length).toBeGreaterThan(0);
+    result = await it.next();
+  }
+});
+
+///////////////////////////////////////////////////
 // Test migrations ////////////////////////////////
 ///////////////////////////////////////////////////
 

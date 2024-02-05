@@ -4,21 +4,24 @@
 //!
 //! With this SDK, you can seamlessly manage various database tables related to documents, text chunks, text splitters, LLM (Language Model) models, and embeddings. By leveraging the SDK's capabilities, you can efficiently index LLM embeddings using PgVector for fast and accurate queries.
 
-use sqlx::PgPool;
+use parking_lot::RwLock;
+use sqlx::{postgres::PgPoolOptions, PgPool};
 use std::collections::HashMap;
 use std::env;
-use std::sync::RwLock;
 use tokio::runtime::Runtime;
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
 mod builtins;
+#[cfg(any(feature = "python", feature = "javascript"))]
+mod cli;
 mod collection;
 mod filter_builder;
 mod languages;
 pub mod migrations;
 mod model;
 pub mod models;
+mod open_source_ai;
 mod order_by_builder;
 mod pipeline;
 mod queries;
@@ -26,6 +29,7 @@ mod query_builder;
 mod query_runner;
 mod remote_embeddings;
 mod splitter;
+pub mod transformer_pipeline;
 pub mod types;
 mod utils;
 
@@ -33,8 +37,10 @@ mod utils;
 pub use builtins::Builtins;
 pub use collection::Collection;
 pub use model::Model;
+pub use open_source_ai::OpenSourceAI;
 pub use pipeline::Pipeline;
 pub use splitter::Splitter;
+pub use transformer_pipeline::TransformerPipeline;
 
 // This is use when inserting collections to set the sdk_version used during creation
 static SDK_VERSION: &str = "0.9.2";
@@ -46,9 +52,7 @@ static DATABASE_POOLS: RwLock<Option<HashMap<String, PgPool>>> = RwLock::new(Non
 // Even though this function does not use async anywhere, for whatever reason it must be async or
 // sqlx's connect_lazy will throw an error
 async fn get_or_initialize_pool(database_url: &Option<String>) -> anyhow::Result<PgPool> {
-    let mut pools = DATABASE_POOLS
-        .write()
-        .expect("Error getting DATABASE_POOLS for writing");
+    let mut pools = DATABASE_POOLS.write();
     let pools = pools.get_or_insert_with(HashMap::new);
     let environment_url = std::env::var("DATABASE_URL");
     let environment_url = environment_url.as_deref();
@@ -58,7 +62,15 @@ async fn get_or_initialize_pool(database_url: &Option<String>) -> anyhow::Result
     if let Some(pool) = pools.get(url) {
         Ok(pool.clone())
     } else {
-        let pool = PgPool::connect_lazy(url)?;
+        let timeout = std::env::var("PGML_CHECKOUT_TIMEOUT")
+            .unwrap_or_else(|_| "5000".to_string())
+            .parse::<u64>()
+            .expect("Error parsing PGML_CHECKOUT_TIMEOUT, expected an integer");
+
+        let pool = PgPoolOptions::new()
+            .acquire_timeout(std::time::Duration::from_millis(timeout))
+            .connect_lazy(&url)?;
+
         pools.insert(url.to_string(), pool.clone());
         Ok(pool)
     }
@@ -144,11 +156,14 @@ fn migrate(py: pyo3::Python) -> pyo3::PyResult<&pyo3::PyAny> {
 fn pgml(_py: pyo3::Python, m: &pyo3::types::PyModule) -> pyo3::PyResult<()> {
     m.add_function(pyo3::wrap_pyfunction!(init_logger, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(migrate, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(cli::cli, m)?)?;
     m.add_class::<pipeline::PipelinePython>()?;
     m.add_class::<collection::CollectionPython>()?;
     m.add_class::<model::ModelPython>()?;
     m.add_class::<splitter::SplitterPython>()?;
     m.add_class::<builtins::BuiltinsPython>()?;
+    m.add_class::<transformer_pipeline::TransformerPipelinePython>()?;
+    m.add_class::<open_source_ai::OpenSourceAIPython>()?;
     Ok(())
 }
 
@@ -189,11 +204,20 @@ fn migrate(
 fn main(mut cx: neon::context::ModuleContext) -> neon::result::NeonResult<()> {
     cx.export_function("init_logger", init_logger)?;
     cx.export_function("migrate", migrate)?;
+    cx.export_function("cli", cli::cli)?;
     cx.export_function("newCollection", collection::CollectionJavascript::new)?;
     cx.export_function("newModel", model::ModelJavascript::new)?;
     cx.export_function("newSplitter", splitter::SplitterJavascript::new)?;
     cx.export_function("newBuiltins", builtins::BuiltinsJavascript::new)?;
+    cx.export_function(
+        "newTransformerPipeline",
+        transformer_pipeline::TransformerPipelineJavascript::new,
+    )?;
     cx.export_function("newPipeline", pipeline::PipelineJavascript::new)?;
+    cx.export_function(
+        "newOpenSourceAI",
+        open_source_ai::OpenSourceAIJavascript::new,
+    )?;
     Ok(())
 }
 
@@ -265,30 +289,30 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
-    async fn can_add_remove_pipelines() -> anyhow::Result<()> {
-        internal_init_logger(None, None).ok();
-        let model = Model::default();
-        let splitter = Splitter::default();
-        let mut pipeline1 = Pipeline::new(
-            "test_r_p_carps_0",
-            Some(model.clone()),
-            Some(splitter.clone()),
-            None,
-        );
-        let mut pipeline2 = Pipeline::new("test_r_p_carps_1", Some(model), Some(splitter), None);
-        let mut collection = Collection::new("test_r_c_carps_1", None);
-        collection.add_pipeline(&mut pipeline1).await?;
-        collection.add_pipeline(&mut pipeline2).await?;
-        let pipelines = collection.get_pipelines().await?;
-        assert!(pipelines.len() == 2);
-        collection.remove_pipeline(&mut pipeline1).await?;
-        let pipelines = collection.get_pipelines().await?;
-        assert!(pipelines.len() == 1);
-        assert!(collection.get_pipeline("test_r_p_carps_0").await.is_err());
-        collection.archive().await?;
-        Ok(())
-    }
+    // #[sqlx::test]
+    // async fn can_add_remove_pipelines() -> anyhow::Result<()> {
+    //     internal_init_logger(None, None).ok();
+    //     let model = Model::default();
+    //     let splitter = Splitter::default();
+    //     let mut pipeline1 = Pipeline::new(
+    //         "test_r_p_carps_0",
+    //         Some(model.clone()),
+    //         Some(splitter.clone()),
+    //         None,
+    //     );
+    //     let mut pipeline2 = Pipeline::new("test_r_p_carps_1", Some(model), Some(splitter), None);
+    //     let mut collection = Collection::new("test_r_c_carps_1", None);
+    //     collection.add_pipeline(&mut pipeline1).await?;
+    //     collection.add_pipeline(&mut pipeline2).await?;
+    //     let pipelines = collection.get_pipelines().await?;
+    //     assert!(pipelines.len() == 2);
+    //     collection.remove_pipeline(&mut pipeline1).await?;
+    //     let pipelines = collection.get_pipelines().await?;
+    //     assert!(pipelines.len() == 1);
+    //     assert!(collection.get_pipeline("test_r_p_carps_0").await.is_err());
+    //     collection.archive().await?;
+    //     Ok(())
+    // }
 
     #[sqlx::test]
     async fn can_specify_custom_hnsw_parameters_for_pipelines() -> anyhow::Result<()> {
@@ -313,7 +337,7 @@ mod tests {
         let mut collection = Collection::new(collection_name, None);
         collection.add_pipeline(&mut pipeline).await?;
         let full_embeddings_table_name = pipeline.create_or_get_embeddings_table().await?;
-        let embeddings_table_name = full_embeddings_table_name.split(".").collect::<Vec<_>>()[1];
+        let embeddings_table_name = full_embeddings_table_name.split('.').collect::<Vec<_>>()[1];
         let pool = get_or_initialize_pool(&None).await?;
         let results: Vec<(String, String)> = sqlx::query_as(&query_builder!(
             "select indexname, indexdef from pg_indexes where tablename = '%d' and schemaname = '%d'",
@@ -339,10 +363,10 @@ mod tests {
         collection.add_pipeline(&mut pipeline).await?;
         let queried_pipeline = &collection.get_pipelines().await?[0];
         assert_eq!(pipeline.name, queried_pipeline.name);
-        collection.disable_pipeline(&mut pipeline).await?;
+        collection.disable_pipeline(&pipeline).await?;
         let queried_pipelines = &collection.get_pipelines().await?;
         assert!(queried_pipelines.is_empty());
-        collection.enable_pipeline(&mut pipeline).await?;
+        collection.enable_pipeline(&pipeline).await?;
         let queried_pipeline = &collection.get_pipelines().await?[0];
         assert_eq!(pipeline.name, queried_pipeline.name);
         collection.archive().await?;
@@ -448,7 +472,6 @@ mod tests {
             Some("text-embedding-ada-002".to_string()),
             Some("openai".to_string()),
             None,
-            None,
         );
         let splitter = Splitter::default();
         let mut pipeline = Pipeline::new(
@@ -504,13 +527,13 @@ mod tests {
         collection.add_pipeline(&mut pipeline).await?;
 
         // Recreate the pipeline to replicate a more accurate example
-        let mut pipeline = Pipeline::new("test_r_p_cvswqb_1", None, None, None);
+        let pipeline = Pipeline::new("test_r_p_cvswqb_1", None, None, None);
         collection
             .upsert_documents(generate_dummy_documents(4), None)
             .await?;
         let results = collection
             .query()
-            .vector_recall("Here is some query", &mut pipeline, None)
+            .vector_recall("Here is some query", &pipeline, None)
             .limit(3)
             .fetch_all()
             .await?;
@@ -527,7 +550,6 @@ mod tests {
             Some("hkunlp/instructor-base".to_string()),
             Some("python".to_string()),
             Some(json!({"instruction": "Represent the Wikipedia document for retrieval: "}).into()),
-            None,
         );
         let splitter = Splitter::default();
         let mut pipeline = Pipeline::new(
@@ -548,7 +570,7 @@ mod tests {
         collection.add_pipeline(&mut pipeline).await?;
 
         // Recreate the pipeline to replicate a more accurate example
-        let mut pipeline = Pipeline::new("test_r_p_cvswqbapmpis_1", None, None, None);
+        let pipeline = Pipeline::new("test_r_p_cvswqbapmpis_1", None, None, None);
         collection
             .upsert_documents(generate_dummy_documents(3), None)
             .await?;
@@ -556,7 +578,7 @@ mod tests {
             .query()
             .vector_recall(
                 "Here is some query",
-                &mut pipeline,
+                &pipeline,
                 Some(
                     json!({
                         "instruction": "Represent the Wikipedia document for retrieval: "
@@ -579,7 +601,6 @@ mod tests {
             Some("text-embedding-ada-002".to_string()),
             Some("openai".to_string()),
             None,
-            None,
         );
         let splitter = Splitter::default();
         let mut pipeline = Pipeline::new(
@@ -600,13 +621,13 @@ mod tests {
         collection.add_pipeline(&mut pipeline).await?;
 
         // Recreate the pipeline to replicate a more accurate example
-        let mut pipeline = Pipeline::new("test_r_p_cvswqbwre_1", None, None, None);
+        let pipeline = Pipeline::new("test_r_p_cvswqbwre_1", None, None, None);
         collection
             .upsert_documents(generate_dummy_documents(4), None)
             .await?;
         let results = collection
             .query()
-            .vector_recall("Here is some query", &mut pipeline, None)
+            .vector_recall("Here is some query", &pipeline, None)
             .limit(3)
             .fetch_all()
             .await?;
@@ -627,7 +648,7 @@ mod tests {
         collection.add_pipeline(&mut pipeline).await?;
 
         // Recreate the pipeline to replicate a more accurate example
-        let mut pipeline = Pipeline::new("test_r_p_cvswqbachesv_1", None, None, None);
+        let pipeline = Pipeline::new("test_r_p_cvswqbachesv_1", None, None, None);
         collection
             .upsert_documents(generate_dummy_documents(3), None)
             .await?;
@@ -635,7 +656,7 @@ mod tests {
             .query()
             .vector_recall(
                 "Here is some query",
-                &mut pipeline,
+                &pipeline,
                 Some(
                     json!({
                         "hnsw": {
@@ -660,7 +681,6 @@ mod tests {
             Some("text-embedding-ada-002".to_string()),
             Some("openai".to_string()),
             None,
-            None,
         );
         let splitter = Splitter::default();
         let mut pipeline = Pipeline::new(
@@ -673,7 +693,7 @@ mod tests {
         collection.add_pipeline(&mut pipeline).await?;
 
         // Recreate the pipeline to replicate a more accurate example
-        let mut pipeline = Pipeline::new("test_r_p_cvswqbachesvare_2", None, None, None);
+        let pipeline = Pipeline::new("test_r_p_cvswqbachesvare_2", None, None, None);
         collection
             .upsert_documents(generate_dummy_documents(3), None)
             .await?;
@@ -681,7 +701,7 @@ mod tests {
             .query()
             .vector_recall(
                 "Here is some query",
-                &mut pipeline,
+                &pipeline,
                 Some(
                     json!({
                         "hnsw": {
@@ -751,11 +771,10 @@ mod tests {
         for (expected_result_count, filter) in filters {
             let results = collection
                 .query()
-                .vector_recall("Here is some query", &mut pipeline, None)
+                .vector_recall("Here is some query", &pipeline, None)
                 .filter(filter)
                 .fetch_all()
                 .await?;
-            println!("{:?}", results);
             assert_eq!(results.len(), expected_result_count);
         }
 

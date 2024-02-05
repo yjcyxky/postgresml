@@ -299,6 +299,115 @@ async def test_order_documents():
 
 
 ###################################################
+## Transformer Pipeline Tests #####################
+###################################################
+
+
+@pytest.mark.asyncio
+async def test_transformer_pipeline():
+    t = pgml.TransformerPipeline("text-generation")
+    it = await t.transform(["AI is going to"], {"max_new_tokens": 5})
+    assert len(it) > 0
+
+
+@pytest.mark.asyncio
+async def test_transformer_pipeline_stream():
+    t = pgml.TransformerPipeline("text-generation")
+    it = await t.transform_stream("AI is going to", {"max_new_tokens": 5})
+    total = []
+    async for c in it:
+        total.append(c)
+    assert len(total) > 0
+
+
+###################################################
+## OpenSourceAI tests ###########################
+###################################################
+
+
+def test_open_source_ai_create():
+    client = pgml.OpenSourceAI()
+    results = client.chat_completions_create(
+        "HuggingFaceH4/zephyr-7b-beta",
+        [
+            {
+                "role": "system",
+                "content": "You are a friendly chatbot who always responds in the style of a pirate",
+            },
+            {
+                "role": "user",
+                "content": "How many helicopters can a human eat in one sitting?",
+            },
+        ],
+        temperature=0.85,
+    )
+    assert len(results["choices"]) > 0
+
+
+@pytest.mark.asyncio
+async def test_open_source_ai_create_async():
+    client = pgml.OpenSourceAI()
+    results = await client.chat_completions_create_async(
+        "HuggingFaceH4/zephyr-7b-beta",
+        [
+            {
+                "role": "system",
+                "content": "You are a friendly chatbot who always responds in the style of a pirate",
+            },
+            {
+                "role": "user",
+                "content": "How many helicopters can a human eat in one sitting?",
+            },
+        ],
+        temperature=0.85,
+    )
+    assert len(results["choices"]) > 0
+
+
+def test_open_source_ai_create_stream():
+    client = pgml.OpenSourceAI()
+    results = client.chat_completions_create_stream(
+        "HuggingFaceH4/zephyr-7b-beta",
+        [
+            {
+                "role": "system",
+                "content": "You are a friendly chatbot who always responds in the style of a pirate",
+            },
+            {
+                "role": "user",
+                "content": "How many helicopters can a human eat in one sitting?",
+            },
+        ],
+        temperature=0.85,
+        n=3,
+    )
+    for c in results:
+        assert len(c["choices"]) > 0
+
+
+@pytest.mark.asyncio
+async def test_open_source_ai_create_stream_async():
+    client = pgml.OpenSourceAI()
+    results = await client.chat_completions_create_stream_async(
+        "HuggingFaceH4/zephyr-7b-beta",
+        [
+            {
+                "role": "system",
+                "content": "You are a friendly chatbot who always responds in the style of a pirate",
+            },
+            {
+                "role": "user",
+                "content": "How many helicopters can a human eat in one sitting?",
+            },
+        ],
+        temperature=0.85,
+        n=3,
+    )
+    async for c in results:
+        assert len(c["choices"]) > 0
+
+
+###################################################
 ## Migration tests ################################
 ###################################################
 
