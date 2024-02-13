@@ -1,11 +1,13 @@
 name: Publish Docker Image for the tgmc-master Branch
 
 on:
+  push:
+    branches:
+      - tgmc-master
   workflow_dispatch:
-    inputs:
-      packageVersion:
-        description: 'The package version'
-        default: "2.8.3"
+
+env:
+  PACKAGE_VERSION: "2.8.3"
 
 jobs:
   #
@@ -108,12 +110,12 @@ jobs:
         # Always build using latest scripts
         git checkout master
 
-        bash packages/postgresql-pgml/release.tgmc.sh ${{ github.event.inputs.packageVersion }}
+        bash packages/postgresql-pgml/release.tgmc.sh ${PACKAGE_VERSION}
     - name: Upload artifact
       uses: actions/upload-artifact@v2
       with:
         name: postgresml-pgml
-        path: postgresql-pgml-15_${{ github.event.inputs.packageVersion }}-ubuntu22.04-amd64.deb
+        path: postgresql-pgml-15_${PACKAGE_VERSION}-ubuntu22.04-amd64.deb
 
   #
   # PostgresML meta package which installs
@@ -130,12 +132,12 @@ jobs:
     - uses: actions/checkout@v3
     - name: Build and release package
       run: |
-        bash packages/postgresml/release.tgmc.sh ${{ github.event.inputs.packageVersion }}
+        bash packages/postgresml/release.tgmc.sh ${PACKAGE_VERSION}
     - name: Upload artifact
       uses: actions/upload-artifact@v2
       with:
         name: postgresml
-        path: postgresml-15-${{ github.event.inputs.packageVersion }}-ubuntu22.04-all.deb
+        path: postgresml-15-${PACKAGE_VERSION}-ubuntu22.04-all.deb
 
   #
   # PostgresML dashboard.
@@ -154,12 +156,12 @@ jobs:
     - name: Build and release package
       run: |
         cargo install cargo-pgml-components
-        bash packages/postgresml-dashboard/release.tgmc.sh ${{ github.event.inputs.packageVersion }}
+        bash packages/postgresml-dashboard/release.tgmc.sh ${PACKAGE_VERSION}
     - name: Upload artifact
       uses: actions/upload-artifact@v2
       with:
         name: postgresml-dashboard
-        path: postgresml-dashboard-${{ github.event.inputs.packageVersion }}-ubuntu22.04-amd64.deb
+        path: postgresml-dashboard-${PACKAGE_VERSION}-ubuntu22.04-amd64.deb
 
   #
   # PostgresML Docker image.
@@ -205,6 +207,6 @@ jobs:
           docker buildx create --use --name mybuilder
           docker buildx build  \
             --platform linux/amd64,linux/arm64 \
-            --tag ghcr.io/yjcyxky/postgresml:${{ inputs.packageVersion }}-${{ steps.commit_hash.outputs.hash }} \
+            --tag ghcr.io/yjcyxky/postgresml:${PACKAGE_VERSION}-${{ steps.commit_hash.outputs.hash }} \
             -f Dockerfile.tgmc \
             --push .
