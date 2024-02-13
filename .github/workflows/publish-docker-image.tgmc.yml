@@ -76,6 +76,7 @@ jobs:
           libclang-dev \
           wget \
           postgresql-15 \
+          postgresql-server-dev-15 \
           lsb-release \
           python3.10 \
           python3-pip \
