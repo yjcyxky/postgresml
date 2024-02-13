@@ -1,12 +1,13 @@
-name: tests
+name: tests (tgmc)
 on:
   push:
     branches:
-      - master
+      - tgmc-master
   workflow_dispatch:
+
 jobs:
   tests:
-    runs-on: buildjet-4vcpu-ubuntu-2204
+    runs-on: ubuntu-22.04
     defaults:
       run:
         working-directory: pgml-extension
@@ -37,7 +38,7 @@ jobs:
               lld
           sudo pip3 install -r requirements.linux.txt
       - name: Cache dependencies
-        uses: buildjet/cache@v3
+        uses: actions/cache@v3
         if: steps.pgml_extension_changed.outputs.PGML_EXTENSION_CHANGED_FILES != '0'
         with:
           path: |
