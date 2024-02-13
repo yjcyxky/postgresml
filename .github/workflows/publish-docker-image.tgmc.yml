@@ -116,7 +116,7 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: postgresml-pgml
-        path: postgresql-pgml-15_${PACKAGE_VERSION}-ubuntu22.04-amd64.deb
+        path: postgresql-pgml-15_${{env.PACKAGE_VERSION}}-ubuntu22.04-amd64.deb
 
   #
   # PostgresML meta package which installs
@@ -138,7 +138,7 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: postgresml
-        path: postgresml-15-${PACKAGE_VERSION}-ubuntu22.04-all.deb
+        path: postgresml-15-${{env.PACKAGE_VERSION}}-ubuntu22.04-all.deb
 
   #
   # PostgresML dashboard.
@@ -162,7 +162,7 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: postgresml-dashboard
-        path: postgresml-dashboard-${PACKAGE_VERSION}-ubuntu22.04-amd64.deb
+        path: postgresml-dashboard-${{env.PACKAGE_VERSION}}-ubuntu22.04-amd64.deb
 
   #
   # PostgresML Docker image.
