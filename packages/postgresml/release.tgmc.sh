@@ -29,6 +29,4 @@ for pg in {12..16}; do
   	echo "File $(package_name ${pg}) doesn't exist"
   	exit 1
   fi
-
-  rm $(package_name ${pg}) 
 done
