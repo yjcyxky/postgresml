@@ -194,14 +194,17 @@ jobs:
         uses: actions/download-artifact@v2
         with:
           name: postgresml
+          path: docker
       - name: Download artifact 2
         uses: actions/download-artifact@v2
         with:
           name: postgresml-dashboard
+          path: docker
       - name: Download artifact 3
         uses: actions/download-artifact@v2
         with:
           name: postgresml-pgml
+          path: docker
       - name: Build and push Docker image
         run: |
           ls -l
