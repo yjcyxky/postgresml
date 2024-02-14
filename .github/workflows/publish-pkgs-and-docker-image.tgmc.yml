@@ -214,7 +214,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ env.PACKAGE_VERSION }}
-          release_name: Release ${{ github.ref }} from the tgmc-master branch
+          release_name: Release ${{ env.PACKAGE_VERSION }} from the tgmc-master branch
           draft: false
           prerelease: false
 
@@ -226,7 +226,7 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./docker/postgresql-pgml-15_${{env.PACKAGE_VERSION}}-ubuntu22.04-amd64.deb
-          asset_name: postgresql-pgml-15_${{env.PACKAGE_VERSION}}-ubuntu22.04-amd64.deb
+          asset_name: postgresql-pgml-15_${{env.PACKAGE_VERSION}}-${{steps.commit_hash.outputs.hash}}-ubuntu22.04-amd64.deb
           asset_content_type: application/octet-stream
       
       - name: Upload Release Asset 2
@@ -236,7 +236,7 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./docker/postgresml-15-${{env.PACKAGE_VERSION}}-ubuntu22.04-all.deb
-          asset_name: postgresml-15-${{env.PACKAGE_VERSION}}-ubuntu22.04-all.deb
+          asset_name: postgresml-15-${{env.PACKAGE_VERSION}}-${{steps.commit_hash.outputs.hash}}-ubuntu22.04-all.deb
           asset_content_type: application/octet-stream
       
       - name: Upload Release Asset 3
@@ -246,7 +246,7 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./docker/postgresml-dashboard-${{env.PACKAGE_VERSION}}-ubuntu22.04-amd64.deb
-          asset_name: postgresml-dashboard-${{env.PACKAGE_VERSION}}-ubuntu22.04-amd64.deb
+          asset_name: postgresml-dashboard-${{env.PACKAGE_VERSION}}-${{steps.commit_hash.outputs.hash}}-ubuntu22.04-amd64.deb
           asset_content_type: application/octet-stream
 
       # - name: Build and push Docker image
