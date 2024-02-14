@@ -16,7 +16,10 @@ RUN curl https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor | te
 ENV TZ=UTC
 ENV DEBIAN_FRONTEND=noninteractive
 COPY *.deb /app/
-RUN apt update -y && apt install git -y && dpkg -i /app/postgresql-pgml-*.deb && dpkg -i /app/postgresml-*-all.deb && dpkg -i /app/postgresml-dashboard-*.deb
+RUN apt update -y && apt install git -y
+RUN dpkg -i /app/postgresql-pgml-*.deb || apt-get install -f -y
+RUN dpkg -i /app/postgresml-*-all.deb || apt-get install -f -y
+RUN dpkg -i /app/postgresml-dashboard-*.deb || apt-get install -f -y
 RUN git clone --branch v0.5.0 https://github.com/pgvector/pgvector && \
 cd pgvector && \
 echo "trusted = true" >> vector.control && \
