@@ -15,16 +15,14 @@ RUN curl https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor | te
 
 ENV TZ=UTC
 ENV DEBIAN_FRONTEND=noninteractive
-COPY *.deb /app/
-RUN apt update -y && apt install git -y
-RUN dpkg -i /app/postgresql-pgml-*.deb || apt-get install -f -y
-RUN dpkg -i /app/postgresml-*-all.deb || apt-get install -f -y
-RUN dpkg -i /app/postgresml-dashboard-*.deb || apt-get install -f -y
-RUN git clone --branch v0.5.0 https://github.com/pgvector/pgvector && \
+RUN apt update -y && apt install git wget -y
+RUN wget https://github.com/yjcyxky/postgresml/releases/download/2.8.3/postgresql-pgml-15_2.8.3-ubuntu22.04-amd64.deb && (dpkg -i ./postgresql-pgml-*.deb || apt-get install -f -y) && git clone --branch v0.5.0 https://github.com/pgvector/pgvector && \
 cd pgvector && \
 echo "trusted = true" >> vector.control && \
 	make && \
 	make install
+RUN wget https://github.com/yjcyxky/postgresml/releases/download/2.8.3/postgresml-15-2.8.3-ubuntu22.04-all.deb && dpkg -i ./postgresml-*-all.deb || apt-get install -f -y
+# RUN wget https://github.com/yjcyxky/postgresml/releases/download/2.8.3/postgresml-dashboard-2.8.3-ubuntu22.04-amd64.deb && dpkg -i ./postgresml-dashboard-*.deb || apt-get install -f -y
 
 COPY entrypoint.sh /app/entrypoint.sh
 COPY dashboard.sh /app/dashboard.sh
@@ -33,3 +31,5 @@ COPY --chown=postgres:postgres local_dev.conf /etc/postgresql/15/main/conf.d/01-
 COPY --chown=postgres:postgres pg_hba.conf /etc/postgresql/15/main/pg_hba.conf
 
 ENTRYPOINT ["bash", "/app/entrypoint.sh"]
+
+# docker build --platform linux/amd64 -t ghcr.io/yjcyxky/postgresml:v2.8.3-2668572 -f Dockerfile.tgmc .
