@@ -1,4 +1,4 @@
-name: Publish Docker Image for the tgmc-master Branch
+name: Publish Pkgs & Docker Image for the tgmc-master Branch
 
 on:
   push:
@@ -205,12 +205,56 @@ jobs:
         with:
           name: postgresml-pgml
           path: docker
-      - name: Build and push Docker image
-        run: |
-          ls -l
-          docker buildx create --use --name mybuilder
-          docker buildx build  \
-            --platform linux/amd64 \
-            --tag ghcr.io/yjcyxky/postgresml:${PACKAGE_VERSION}-${{ steps.commit_hash.outputs.hash }} \
-            -f Dockerfile.tgmc \
-            --push .
+
+      # 创建 Release
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }} from the tgmc-master branch
+          draft: false
+          prerelease: false
+
+      # 上传 artifacts 到 Release
+      - name: Upload Release Asset 1
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./docker/postgresql-pgml-15_${{env.PACKAGE_VERSION}}-ubuntu22.04-amd64.deb
+          asset_name: postgresql-pgml-15_${{env.PACKAGE_VERSION}}-ubuntu22.04-amd64.deb
+          asset_content_type: application/octet-stream
+      
+      - name: Upload Release Asset 2
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./docker/postgresml-15-${{env.PACKAGE_VERSION}}-ubuntu22.04-all.deb
+          asset_name: postgresml-15-${{env.PACKAGE_VERSION}}-ubuntu22.04-all.deb
+          asset_content_type: application/octet-stream
+      
+      - name: Upload Release Asset 3
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./docker/postgresml-dashboard-${{env.PACKAGE_VERSION}}-ubuntu22.04-amd64.deb
+          asset_name: postgresml-dashboard-${{env.PACKAGE_VERSION}}-ubuntu22.04-amd64.deb
+          asset_content_type: application/octet-stream
+
+      # - name: Build and push Docker image
+      #   run: |
+      #     ls -l
+      #     docker buildx create --use --name mybuilder
+      #     docker buildx build  \
+      #       --platform linux/amd64 \
+      #       --tag ghcr.io/yjcyxky/postgresml:${PACKAGE_VERSION}-${{ steps.commit_hash.outputs.hash }} \
+      #       -f Dockerfile.tgmc \
+      #       --push .
