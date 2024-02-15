@@ -215,7 +215,7 @@ jobs:
         with:
           tag_name: v${{ env.PACKAGE_VERSION }}-${{steps.commit_hash.outputs.hash}}
           release_name: Release ${{ env.PACKAGE_VERSION }}-${{steps.commit_hash.outputs.hash}} from the tgmc-master branch
-          draft: true
+          draft: false
           prerelease: true
 
       # 上传 artifacts 到 Release
