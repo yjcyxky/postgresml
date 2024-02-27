@@ -1,4 +1,4 @@
--- src/kge.rs:11
+-- src/kge.rs
 -- pgml::kge::logsigmoid
 DROP FUNCTION IF EXISTS pgml."logsigmoid"(real);
 CREATE  FUNCTION pgml."logsigmoid"(
@@ -8,7 +8,27 @@ IMMUTABLE STRICT PARALLEL SAFE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'logsigmoid_wrapper';
 
--- src/kge.rs:24
+-- src/kge.rs
+-- pgml::kge::mean
+DROP FUNCTION IF EXISTS pgml."mean"(real[]);
+CREATE  FUNCTION pgml."mean"(
+    "x" REAL[] /* f32[] */
+) RETURNS REAL /* f32 */
+IMMUTABLE STRICT PARALLEL SAFE
+LANGUAGE c /* Rust */
+AS 'MODULE_PATHNAME', 'mean_wrapper';
+
+-- src/kge.rs
+-- pgml::kge::median
+DROP FUNCTION IF EXISTS pgml."median"(real[]);
+CREATE  FUNCTION pgml."median"(
+    "x" REAL[] /* f32[] */
+) RETURNS REAL /* f32 */
+IMMUTABLE STRICT PARALLEL SAFE
+LANGUAGE c /* Rust */
+AS 'MODULE_PATHNAME', 'median_wrapper';
+
+-- src/kge.rs
 -- pgml::kge::transe_l2_parallel
 DROP FUNCTION IF EXISTS pgml."transe_l2_parallel"(real[], real[], real[], real, bool);
 CREATE  FUNCTION pgml."transe_l2_parallel"(
@@ -23,7 +43,7 @@ IMMUTABLE STRICT PARALLEL SAFE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'transe_l2_parallel_wrapper';
 
--- src/kge.rs:89
+-- src/kge.rs
 -- pgml::kge::transe_l2_ndarray
 DROP FUNCTION IF EXISTS pgml."transe_l2_ndarray"(real[], real[], real[], real, bool);
 CREATE  FUNCTION pgml."transe_l2_ndarray"(
@@ -38,7 +58,7 @@ IMMUTABLE STRICT PARALLEL SAFE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'transe_l2_ndarray_wrapper';
 
--- src/kge.rs:127
+-- src/kge.rs
 -- pgml::kge::transe_l2
 DROP FUNCTION IF EXISTS pgml."transe_l2"(real[], real[], real[], real, bool);
 CREATE  FUNCTION pgml."transe_l2"(
@@ -53,7 +73,7 @@ IMMUTABLE STRICT PARALLEL SAFE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'transe_l2_wrapper';
 
--- src/kge.rs:168
+-- src/kge.rs
 -- pgml::kge::transe_l1
 DROP FUNCTION IF EXISTS pgml."transe_l1"(real[], real[], real[], real, bool);
 CREATE  FUNCTION pgml."transe_l1"(
@@ -68,7 +88,7 @@ IMMUTABLE STRICT PARALLEL SAFE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'transe_l1_wrapper';
 
--- src/kge.rs:207
+-- src/kge.rs
 -- pgml::kge::transe_l1_ndarray
 DROP FUNCTION IF EXISTS pgml."transe_l1_ndarray"(real[], real[], real[], real, bool);
 CREATE  FUNCTION pgml."transe_l1_ndarray"(
@@ -83,7 +103,7 @@ IMMUTABLE STRICT PARALLEL SAFE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'transe_l1_ndarray_wrapper';
 
--- src/kge.rs:237
+-- src/kge.rs
 -- pgml::kge::transe_l1_parallel
 DROP FUNCTION IF EXISTS pgml."transe_l1_parallel"(real[], real[], real[], real, bool);
 CREATE  FUNCTION pgml."transe_l1_parallel"(
@@ -98,7 +118,7 @@ IMMUTABLE STRICT PARALLEL SAFE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'transe_l1_parallel_wrapper';
 
--- src/kge.rs:299
+-- src/kge.rs
 -- pgml::kge::distmult
 DROP FUNCTION IF EXISTS pgml."distmult"(real[], real[], real[], bool);
 CREATE  FUNCTION pgml."distmult"(
@@ -112,7 +132,7 @@ IMMUTABLE STRICT PARALLEL SAFE
 LANGUAGE c /* Rust */
 AS 'MODULE_PATHNAME', 'distmult_wrapper';
 
--- src/kge.rs:335
+-- src/kge.rs
 -- pgml::kge::distmult_ndarray
 DROP FUNCTION IF EXISTS pgml."distmult_ndarray"(real[], real[], real[], bool);
 CREATE  FUNCTION pgml."distmult_ndarray"(

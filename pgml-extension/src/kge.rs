@@ -12,12 +12,30 @@ fn logsigmoid(x: f32) -> f32 {
     -((1.0 + (-x).exp()).ln())
 }
 
-fn exp(x: f32) -> f32 {
-    x.exp()
-}
-
+#[pg_extern(immutable, parallel_safe, strict, name = "logsigmoid_vectorized")]
 fn logsigmoid_vectorized(x: &Array1<f32>) -> Array1<f32> {
     -(&(x.mapv(|x| (-x).exp()) + 1.0).mapv(f32::ln))
+}
+
+#[pg_extern(immutable, parallel_safe, strict, name = "mean")]
+fn mean(x: Array<f32>) -> f32 {
+    x.iter_deny_null().sum::<f32>() / x.len() as f32
+}
+
+#[pg_extern(immutable, parallel_safe, strict, name = "median")]
+fn median(x: Array<f32>) -> f32 {
+    let mut x = x.iter_deny_null().collect::<Vec<f32>>();
+    x.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let mid = x.len() / 2;
+    if x.len() % 2 == 0 {
+        (x[mid - 1] + x[mid]) / 2.0
+    } else {
+        x[mid]
+    }
+}
+
+fn exp(x: f32) -> f32 {
+    x.exp()
 }
 
 #[pg_extern(immutable, parallel_safe, strict, name = "transe_l2_parallel")]
@@ -370,6 +388,21 @@ mod tests {
     fn test_logsigmoid() {
         let result = Spi::get_one::<f32>("SELECT pgml.logsigmoid(1.0)");
         assert_eq!(result, Ok(Some(-0.31326166)));
+    }
+
+    #[pg_test]
+    fn test_mean() {
+        let result = Spi::get_one::<f32>("SELECT pgml.mean(ARRAY[1.0, 2.0, 3.0, 4.0, 5.0])");
+        assert_eq!(result, Ok(Some(3.0)));
+    }
+
+    #[pg_test]
+    fn test_median() {
+        let result = Spi::get_one::<f32>("SELECT pgml.median(ARRAY[1.0, 2.0, 3.0, 4.0, 5.0])");
+        assert_eq!(result, Ok(Some(3.0)));
+
+        let result = Spi::get_one::<f32>("SELECT pgml.median(ARRAY[1.0, 2.0, 3.0, 4.0, 5.0, 6.0])");
+        assert_eq!(result, Ok(Some(3.5)));
     }
 
     #[test]
