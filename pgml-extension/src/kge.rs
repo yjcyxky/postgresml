@@ -12,7 +12,6 @@ fn logsigmoid(x: f32) -> f32 {
     -((1.0 + (-x).exp()).ln())
 }
 
-#[pg_extern(immutable, parallel_safe, strict, name = "logsigmoid_vectorized")]
 fn logsigmoid_vectorized(x: &Array1<f32>) -> Array1<f32> {
     -(&(x.mapv(|x| (-x).exp()) + 1.0).mapv(f32::ln))
 }
