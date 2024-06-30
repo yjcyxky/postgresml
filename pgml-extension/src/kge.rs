@@ -378,6 +378,107 @@ fn distmult_ndarray(
     }
 }
 
+#[pg_extern(immutable, parallel_safe, strict, name = "complex")]
+fn complex(
+    head_array: Array<f32>,
+    relation_array: Array<f32>,
+    tail_array: Array<f32>,
+    exp_enabled: bool,
+    reverse: bool,
+) -> f32 {
+    let len = head_array.len();
+    if len % 2 != 0 || len != relation_array.len() || len != tail_array.len() {
+        error!("The length of the head, relation, and tail arrays must be the same and even.");
+    }
+
+    let half_len = len / 2;
+
+    let head_real = Array1::from_vec(head_array.iter_deny_null().take(half_len).cloned().collect());
+    let head_img = Array1::from_vec(head_array.iter_deny_null().skip(half_len).cloned().collect());
+
+    let tail_real = Array1::from_vec(tail_array.iter_deny_null().take(half_len).cloned().collect());
+    let tail_img = Array1::from_vec(tail_array.iter_deny_null().skip(half_len).cloned().collect());
+
+    let rel_real = Array1::from_vec(relation_array.iter_deny_null().take(half_len).cloned().collect());
+    let rel_img = Array1::from_vec(relation_array.iter_deny_null().skip(half_len).cloned().collect());
+
+    let score = if reverse {
+        (&tail_real * &rel_real - &tail_img * &rel_img) * &head_real
+            + (&tail_real * &rel_img + &tail_img * &rel_real) * &head_img
+    } else {
+        (&head_real * &rel_real - &head_img * &rel_img) * &tail_real
+            + (&head_real * &rel_img + &head_img * &rel_real) * &tail_img
+    };
+
+    let score_sum: f32 = score.sum();
+
+    if exp_enabled {
+        exp(logsigmoid(score_sum))
+    } else {
+        logsigmoid(score_sum)
+    }
+}
+
+#[pg_extern(immutable, parallel_safe, strict, name = "complex_ndarray")]
+fn complex_ndarray(
+    head: Array<f32>,
+    rel: Array<f32>,
+    tails: Array<f32>,
+    exp_enabled: bool,
+    reverse: bool,
+) -> Vec<Option<f32>> {
+    let len = head.len();
+    if len % 2 != 0 || len != rel.len() {
+        error!("The length of the head and relation arrays must be the same and even.");
+    }
+
+    let half_len = len / 2;
+    let tails_len = tails.len();
+    if tails_len % len != 0 {
+        error!("The length of the tail array must be a multiple of the head array.");
+    }
+
+    let head_real = Array1::from_vec(head.iter_deny_null().take(half_len).cloned().collect());
+    let head_img = Array1::from_vec(head.iter_deny_null().skip(half_len).cloned().collect());
+
+    let rel_real = Array1::from_vec(rel.iter_deny_null().take(half_len).cloned().collect());
+    let rel_img = Array1::from_vec(rel.iter_deny_null().skip(half_len).cloned().collect());
+
+    let tails_real = tails.iter_deny_null().cloned().collect::<Vec<f32>>();
+    let tails_img = tails.iter_deny_null().skip(half_len).cloned().collect::<Vec<f32>>();
+
+    let tails_real = Array2::from_shape_vec((tails_len / len, half_len), tails_real).unwrap();
+    let tails_img = Array2::from_shape_vec((tails_len / len, half_len), tails_img).unwrap();
+
+    let score = if reverse {
+        (head_real.broadcast(tails_real.dim()).unwrap() * rel_real.broadcast(tails_real.dim()).unwrap()
+            - head_img.broadcast(tails_img.dim()).unwrap() * rel_img.broadcast(tails_img.dim()).unwrap())
+            * tails_real
+            + (head_real.broadcast(tails_real.dim()).unwrap() * rel_img.broadcast(tails_img.dim()).unwrap()
+                + head_img.broadcast(tails_img.dim()).unwrap() * rel_real.broadcast(tails_real.dim()).unwrap())
+                * tails_img
+    } else {
+        (head_real.broadcast(tails_real.dim()).unwrap() * rel_real.broadcast(tails_real.dim()).unwrap()
+            - head_img.broadcast(tails_img.dim()).unwrap() * rel_img.broadcast(tails_img.dim()).unwrap())
+            * tails_real
+            + (head_real.broadcast(tails_real.dim()).unwrap() * rel_img.broadcast(tails_img.dim()).unwrap()
+                + head_img.broadcast(tails_img.dim()).unwrap() * rel_real.broadcast(tails_real.dim()).unwrap())
+                * tails_img
+    };
+
+    let scores_sum = score.sum_axis(Axis(1));
+
+    let adjusted_scores = scores_sum.mapv(|x| gamma - x);
+
+    let result = if exp_enabled {
+        logsigmoid_vectorized(&adjusted_scores).mapv(|x| E.powf(x))
+    } else {
+        logsigmoid_vectorized(&adjusted_scores)
+    };
+
+    result.iter().map(|&x| Some(x)).collect()
+}
+
 #[cfg(any(test, feature = "pg_test"))]
 #[pg_schema]
 mod tests {
