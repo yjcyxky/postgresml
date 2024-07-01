@@ -378,6 +378,7 @@ fn distmult_ndarray(
     }
 }
 
+// More details: https://github.com/open-prophetdb/dgl-ke/blob/9a3b5b24c911dacdeb9f398500d7eb5ac2aed649/python/dglke/models/pytorch/score_fun.py#L309
 #[pg_extern(immutable, parallel_safe, strict, name = "complex")]
 fn complex(
     head_array: Array<f32>,
@@ -393,90 +394,115 @@ fn complex(
 
     let half_len = len / 2;
 
-    let head_real = Array1::from_vec(head_array.iter_deny_null().take(half_len).cloned().collect());
-    let head_img = Array1::from_vec(head_array.iter_deny_null().skip(half_len).cloned().collect());
+    let head_real: Vec<f32> = head_array.iter_deny_null().take(half_len).collect();
+    let head_img: Vec<f32> = head_array.iter_deny_null().skip(half_len).collect();
 
-    let tail_real = Array1::from_vec(tail_array.iter_deny_null().take(half_len).cloned().collect());
-    let tail_img = Array1::from_vec(tail_array.iter_deny_null().skip(half_len).cloned().collect());
+    let tail_real: Vec<f32> = tail_array.iter_deny_null().take(half_len).collect();
+    let tail_img: Vec<f32> = tail_array.iter_deny_null().skip(half_len).collect();
 
-    let rel_real = Array1::from_vec(relation_array.iter_deny_null().take(half_len).cloned().collect());
-    let rel_img = Array1::from_vec(relation_array.iter_deny_null().skip(half_len).cloned().collect());
+    let rel_real: Vec<f32> = relation_array.iter_deny_null().take(half_len).collect();
+    let rel_img: Vec<f32> = relation_array.iter_deny_null().skip(half_len).collect();
 
-    let score = if reverse {
-        (&tail_real * &rel_real - &tail_img * &rel_img) * &head_real
-            + (&tail_real * &rel_img + &tail_img * &rel_real) * &head_img
+    let score: f32 = if reverse {
+        tail_real
+            .iter()
+            .zip(&rel_real)
+            .zip(&head_real)
+            .map(|((&tr, &rr), &hr)| tr * rr * hr)
+            .sum::<f32>()
+            + tail_real
+                .iter()
+                .zip(&rel_img)
+                .zip(&head_img)
+                .map(|((&tr, &ri), &hi)| tr * ri * hi)
+                .sum::<f32>()
+            + tail_img
+                .iter()
+                .zip(&rel_real)
+                .zip(&head_img)
+                .map(|((&ti, &rr), &hi)| ti * rr * hi)
+                .sum::<f32>()
+            - tail_img
+                .iter()
+                .zip(&rel_img)
+                .zip(&head_real)
+                .map(|((&ti, &ri), &hr)| ti * ri * hr)
+                .sum::<f32>()
     } else {
-        (&head_real * &rel_real - &head_img * &rel_img) * &tail_real
-            + (&head_real * &rel_img + &head_img * &rel_real) * &tail_img
+        head_real
+            .iter()
+            .zip(&rel_real)
+            .zip(&tail_real)
+            .map(|((&hr, &rr), &tr)| hr * rr * tr)
+            .sum::<f32>()
+            + head_real
+                .iter()
+                .zip(&rel_img)
+                .zip(&tail_img)
+                .map(|((&hr, &ri), &ti)| hr * ri * ti)
+                .sum::<f32>()
+            + head_img
+                .iter()
+                .zip(&rel_real)
+                .zip(&tail_img)
+                .map(|((&hi, &rr), &ti)| hi * rr * ti)
+                .sum::<f32>()
+            - head_img
+                .iter()
+                .zip(&rel_img)
+                .zip(&tail_real)
+                .map(|((&hi, &ri), &tr)| hi * ri * tr)
+                .sum::<f32>()
     };
 
-    let score_sum: f32 = score.sum();
-
     if exp_enabled {
-        exp(logsigmoid(score_sum))
+        (logsigmoid(score)).exp()
     } else {
-        logsigmoid(score_sum)
+        logsigmoid(score)
     }
 }
 
 #[pg_extern(immutable, parallel_safe, strict, name = "complex_ndarray")]
 fn complex_ndarray(
-    head: Array<f32>,
-    rel: Array<f32>,
-    tails: Array<f32>,
+    head_array: Array<f32>,
+    relation_array: Array<f32>,
+    tail_array: Array<f32>,
     exp_enabled: bool,
     reverse: bool,
-) -> Vec<Option<f32>> {
-    let len = head.len();
-    if len % 2 != 0 || len != rel.len() {
-        error!("The length of the head and relation arrays must be the same and even.");
+) -> f32 {
+    let len = head_array.len();
+    if len % 2 != 0 || len != relation_array.len() || len != tail_array.len() {
+        error!("The length of the head, relation, and tail arrays must be the same and even.");
     }
 
     let half_len = len / 2;
-    let tails_len = tails.len();
-    if tails_len % len != 0 {
-        error!("The length of the tail array must be a multiple of the head array.");
-    }
 
-    let head_real = Array1::from_vec(head.iter_deny_null().take(half_len).cloned().collect());
-    let head_img = Array1::from_vec(head.iter_deny_null().skip(half_len).cloned().collect());
+    let head_real = Array1::from_vec(head_array.iter_deny_null().take(half_len).collect::<Vec<f32>>());
+    let head_img = Array1::from_vec(head_array.iter_deny_null().skip(half_len).collect::<Vec<f32>>());
 
-    let rel_real = Array1::from_vec(rel.iter_deny_null().take(half_len).cloned().collect());
-    let rel_img = Array1::from_vec(rel.iter_deny_null().skip(half_len).cloned().collect());
+    let tail_real = Array1::from_vec(tail_array.iter_deny_null().take(half_len).collect::<Vec<f32>>());
+    let tail_img = Array1::from_vec(tail_array.iter_deny_null().skip(half_len).collect::<Vec<f32>>());
 
-    let tails_real = tails.iter_deny_null().cloned().collect::<Vec<f32>>();
-    let tails_img = tails.iter_deny_null().skip(half_len).cloned().collect::<Vec<f32>>();
-
-    let tails_real = Array2::from_shape_vec((tails_len / len, half_len), tails_real).unwrap();
-    let tails_img = Array2::from_shape_vec((tails_len / len, half_len), tails_img).unwrap();
+    let rel_real = Array1::from_vec(relation_array.iter_deny_null().take(half_len).collect::<Vec<f32>>());
+    let rel_img = Array1::from_vec(relation_array.iter_deny_null().skip(half_len).collect::<Vec<f32>>());
 
     let score = if reverse {
-        (head_real.broadcast(tails_real.dim()).unwrap() * rel_real.broadcast(tails_real.dim()).unwrap()
-            - head_img.broadcast(tails_img.dim()).unwrap() * rel_img.broadcast(tails_img.dim()).unwrap())
-            * tails_real
-            + (head_real.broadcast(tails_real.dim()).unwrap() * rel_img.broadcast(tails_img.dim()).unwrap()
-                + head_img.broadcast(tails_img.dim()).unwrap() * rel_real.broadcast(tails_real.dim()).unwrap())
-                * tails_img
+        (&tail_real * &rel_real * &head_real).sum()
+            + (&tail_real * &rel_img * &head_img).sum()
+            + (&tail_img * &rel_real * &head_img).sum()
+            - (&tail_img * &rel_img * &head_real).sum()
     } else {
-        (head_real.broadcast(tails_real.dim()).unwrap() * rel_real.broadcast(tails_real.dim()).unwrap()
-            - head_img.broadcast(tails_img.dim()).unwrap() * rel_img.broadcast(tails_img.dim()).unwrap())
-            * tails_real
-            + (head_real.broadcast(tails_real.dim()).unwrap() * rel_img.broadcast(tails_img.dim()).unwrap()
-                + head_img.broadcast(tails_img.dim()).unwrap() * rel_real.broadcast(tails_real.dim()).unwrap())
-                * tails_img
+        (&head_real * &rel_real * &tail_real).sum()
+            + (&head_real * &rel_img * &tail_img).sum()
+            + (&head_img * &rel_real * &tail_img).sum()
+            - (&head_img * &rel_img * &tail_real).sum()
     };
 
-    let scores_sum = score.sum_axis(Axis(1));
-
-    let adjusted_scores = scores_sum.mapv(|x| gamma - x);
-
-    let result = if exp_enabled {
-        logsigmoid_vectorized(&adjusted_scores).mapv(|x| E.powf(x))
+    if exp_enabled {
+        (logsigmoid(score)).exp()
     } else {
-        logsigmoid_vectorized(&adjusted_scores)
-    };
-
-    result.iter().map(|&x| Some(x)).collect()
+        logsigmoid(score)
+    }
 }
 
 #[cfg(any(test, feature = "pg_test"))]
@@ -547,5 +573,21 @@ mod tests {
             "SELECT pgml.distmult(ARRAY[0.1, 0.2, 3.0], ARRAY[0.4, 0.5, 0.6], ARRAY[0.7, 0.8, 0.9], true, false)",
         );
         assert_eq!(result, Ok(Some(0.8491564)));
+    }
+
+    #[pg_test]
+    fn test_complex() {
+        let result = Spi::get_one::<f32>(
+            "SELECT pgml.complex(ARRAY[0.1, 0.2, 3.0, 0.4, 0.5, 0.6], ARRAY[0.3, 0.4, 0.5, 0.6, 0.7, 0.2], ARRAY[1.3, 1.4, 0.5, 1.6, 1.7, 0.8], true, false)",
+        );
+        assert_eq!(result, Ok(Some(0.83548355)));
+    }
+
+    #[pg_test]
+    fn test_complex_ndarray() {
+        let result = Spi::get_one::<f32>(
+            "SELECT pgml.complex_ndarray(ARRAY[0.1, 0.2, 3.0, 0.4, 0.5, 0.6], ARRAY[0.3, 0.4, 0.5, 0.6, 0.7, 0.2], ARRAY[1.3, 1.4, 0.5, 1.6, 1.7, 0.8], true, false)",
+        );
+        assert_eq!(result, Ok(Some(0.83548355)));
     }
 }
