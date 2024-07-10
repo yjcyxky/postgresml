@@ -18,6 +18,7 @@ jobs:
       fail-fast: false # Let the other job finish
       matrix:
         os: ["ubuntu-22.04"]
+        arch: ["x86_64", "arm64"]
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v3
@@ -116,7 +117,7 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: postgresml-pgml
-        path: postgresql-pgml-15_${{env.PACKAGE_VERSION}}-ubuntu22.04-amd64.deb
+        path: postgresql-pgml-15_${{env.PACKAGE_VERSION}}-ubuntu22.04-${{ runner.arch }}.deb
 
   #
   # PostgresML meta package which installs
@@ -138,7 +139,7 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: postgresml
-        path: postgresml-15-${{env.PACKAGE_VERSION}}-ubuntu22.04-all.deb
+        path: postgresml-15-${{env.PACKAGE_VERSION}}-ubuntu22.04-all-${{ runner.arch }}.deb
 
   #
   # PostgresML dashboard.
@@ -162,7 +163,7 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: postgresml-dashboard
-        path: postgresml-dashboard-${{env.PACKAGE_VERSION}}-ubuntu22.04-amd64.deb
+        path: postgresml-dashboard-${{env.PACKAGE_VERSION}}-ubuntu22.04-${{ runner.arch }}.deb
 
   #
   # PostgresML Docker image.
@@ -225,8 +226,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./docker/postgresql-pgml-15_${{env.PACKAGE_VERSION}}-ubuntu22.04-amd64.deb
-          asset_name: postgresql-pgml-15_${{env.PACKAGE_VERSION}}-${{steps.commit_hash.outputs.hash}}-ubuntu22.04-amd64.deb
+          asset_path: ./docker/postgresql-pgml-15_${{env.PACKAGE_VERSION}}-ubuntu22.04-${{ runner.arch }}.deb
+          asset_name: postgresql-pgml-15_${{env.PACKAGE_VERSION}}-${{steps.commit_hash.outputs.hash}}-ubuntu22.04-${{ runner.arch }}.deb
           asset_content_type: application/octet-stream
       
       - name: Upload Release Asset 2
@@ -245,8 +246,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./docker/postgresml-dashboard-${{env.PACKAGE_VERSION}}-ubuntu22.04-amd64.deb
-          asset_name: postgresml-dashboard-${{env.PACKAGE_VERSION}}-${{steps.commit_hash.outputs.hash}}-ubuntu22.04-amd64.deb
+          asset_path: ./docker/postgresml-dashboard-${{env.PACKAGE_VERSION}}-ubuntu22.04-${{ runner.arch }}.deb
+          asset_name: postgresml-dashboard-${{env.PACKAGE_VERSION}}-${{steps.commit_hash.outputs.hash}}-ubuntu22.04-${{ runner.arch }}.deb
           asset_content_type: application/octet-stream
 
       # - name: Build and push Docker image

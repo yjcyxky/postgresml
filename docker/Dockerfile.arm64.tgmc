@@ -16,7 +16,7 @@ RUN curl https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor | te
 ENV TZ=UTC
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt update -y && apt install git wget -y
-RUN wget https://github.com/yjcyxky/postgresml/releases/download/v2.8.3-a6a3463/postgresql-pgml-15_2.8.3-a6a3463-ubuntu22.04-amd64.deb && (dpkg -i ./postgresql-pgml-*.deb || apt-get install -f -y) && git clone --branch v0.5.0 https://github.com/pgvector/pgvector && \
+RUN wget https://github.com/yjcyxky/postgresml/releases/download/v2.8.3-a6a3463/postgresql-pgml-15_2.8.3-a6a3463-ubuntu22.04-arm64.deb && (dpkg -i ./postgresql-pgml-*.deb || apt-get install -f -y) && git clone --branch v0.5.0 https://github.com/pgvector/pgvector && \
 cd pgvector && \
 echo "trusted = true" >> vector.control && \
 	make && \

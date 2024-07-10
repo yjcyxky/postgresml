@@ -45,4 +45,17 @@ git tag v2.8.3-<commit-id>
 git push origin tgmc-master --tags
 ```
 
+## Build docker image
 
+```bash
+cd docker
+
+# Update the Dockerfile.tgmc with the new commit id
+
+# Build the docker image
+docker build --platform linux/amd64 -t nordata/postgresml:v2.8.3-<commit-id> -f Dockerfile.tgmc .
+docker push nordata/postgresml:v2.8.3-<commit-id>
+
+# When you build the image on a Mac, you might encounter some issues with the platform. So you can rsync the docker directory to a Linux machine and build the image there.
+# Like 404 Not Found [IP: xxx.xxx.xxx.xxx 80]
+```
